@@ -141,6 +141,11 @@ class Cache implements CacheInterface
             throw new InvalidArgumentException('Le gestionnaire de cache doit utiliser BlitzPHP\Cache\Handlers\BaseHandler comme classe de base.');
         }
 
+		if (isset($this->config[$handler]) && is_array($this->config[$handler])) {
+			$this->config = array_merge($this->config, $this->config[$handler]);
+			unset($this->config[$handler]);
+		}
+
         if (! $adapter->init($this->config)) {
             throw new RuntimeException(
                 sprintf(
