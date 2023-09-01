@@ -442,20 +442,29 @@ class Cache implements CacheInterface
      * ```
      *
      * @param string   $key      La clé de cache sur laquelle lire/stocker les données.
+     * @param DateInterval|int|null $ttl   Facultatif. La valeur TTL de cet élément. Si aucune valeur n'est envoyée et
+     *                                     le pilote prend en charge TTL, la bibliothèque peut définir une valeur par défaut
+     *                                     pour cela ou laissez le conducteur s'en occuper.
+     *
      * @param callable $callable Le callback qui fournit des données dans le cas où
      *                           la clé de cache est vide. Peut être n'importe quel type appelable pris en charge par votre PHP.
      *
      * @return mixed Si la clé est trouvée : les données en cache.
      *               Si la clé n'est pas trouvée, la valeur renvoyée par le callable.
      */
-    public function remember(string $key, callable $callable): mixed
+    public function remember(string $key, callable|DateInterval|int|null $ttl, callable $callable): mixed
     {
+        if (is_callable($ttl)) {
+            $callable = $ttl;
+            $ttl      = null;
+        }
+
         $existing = $this->read($key);
         if ($existing !== null) {
             return $existing;
         }
         $results = $callable();
-        $this->write($key, $results);
+        $this->write($key, $results, $ttl);
 
         return $results;
     }
