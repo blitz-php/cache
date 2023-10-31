@@ -35,7 +35,7 @@ class ArrayHandler extends BaseHandler
     /**
      * {@inheritDoc}
      */
-    public function set(string $key, mixed $value, DateInterval|int|null $ttl = null): bool
+    public function set(string $key, mixed $value, null|DateInterval|int $ttl = null): bool
     {
         $key              = $this->_key($key);
         $expires          = time() + $this->duration($ttl);

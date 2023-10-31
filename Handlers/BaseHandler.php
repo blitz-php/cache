@@ -214,7 +214,7 @@ abstract class BaseHandler implements CacheInterface
      * @throws InvalidArgumentException Si $values n'est ni un tableau ni un Traversable,
      *                                  ou si l'une des valeurs $ n'est pas une valeur légale.
      */
-    public function setMultiple(iterable $values, DateInterval|int|null $ttl = null): bool
+    public function setMultiple(iterable $values, null|DateInterval|int $ttl = null): bool
     {
         $this->ensureValidType($values, self::CHECK_KEY);
 
@@ -299,7 +299,7 @@ abstract class BaseHandler implements CacheInterface
      *
      * @return bool Vrai en cas de succès et faux en cas d'échec.
      */
-    abstract public function set(string $key, mixed $value, DateInterval|int|null $ttl = null): bool;
+    abstract public function set(string $key, mixed $value, null|DateInterval|int $ttl = null): bool;
 
     /**
      * {@inheritDoc}
@@ -403,7 +403,7 @@ abstract class BaseHandler implements CacheInterface
      * @param DateInterval|int|null $ttl La valeur TTL de cet élément. Si null est envoyé,
      *                                   La durée par défaut du conducteur sera utilisée.
      */
-    protected function duration(DateInterval|int|null $ttl): int
+    protected function duration(null|DateInterval|int $ttl): int
     {
         if ($ttl === null) {
             return $this->_config['duration'];

@@ -44,7 +44,7 @@ class Wincache extends BaseHandler
     /**
      * {@inheritDoc}
      */
-    public function set(string $key, mixed $value, DateInterval|int|null $ttl = null): bool
+    public function set(string $key, mixed $value, null|DateInterval|int $ttl = null): bool
     {
         $key      = $this->_key($key);
         $duration = $this->duration($ttl);
@@ -105,7 +105,7 @@ class Wincache extends BaseHandler
         unset($info);
 
         foreach ($cacheKeys as $key) {
-            if (strpos($key['key_name'], $this->_config['prefix']) === 0) {
+            if (str_starts_with($key['key_name'], $this->_config['prefix'])) {
                 wincache_ucache_delete($key['key_name']);
             }
         }

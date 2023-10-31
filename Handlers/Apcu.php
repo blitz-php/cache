@@ -43,7 +43,7 @@ class Apcu extends BaseHandler
     /**
      * {@inheritDoc}
      */
-    public function set(string $key, mixed $value, DateInterval|int|null $ttl = null): bool
+    public function set(string $key, mixed $value, null|DateInterval|int $ttl = null): bool
     {
         $key      = $this->_key($key);
         $duration = $this->duration($ttl);
@@ -123,7 +123,7 @@ class Apcu extends BaseHandler
         $cache = apcu_cache_info(); // Déclenche déjà un avertissement par lui-même
 
         foreach ($cache['cache_list'] as $key) {
-            if (strpos($key['info'], $this->_config['prefix']) === 0) {
+            if (str_starts_with($key['info'], $this->_config['prefix'])) {
                 apcu_delete($key['info']);
             }
         }

@@ -141,10 +141,10 @@ class Cache implements CacheInterface
             throw new InvalidArgumentException('Le gestionnaire de cache doit utiliser BlitzPHP\Cache\Handlers\BaseHandler comme classe de base.');
         }
 
-		if (isset($this->config[$handler]) && is_array($this->config[$handler])) {
-			$this->config = array_merge($this->config, $this->config[$handler]);
-			unset($this->config[$handler]);
-		}
+        if (isset($this->config[$handler]) && is_array($this->config[$handler])) {
+            $this->config = array_merge($this->config, $this->config[$handler]);
+            unset($this->config[$handler]);
+        }
 
         if (! $adapter->init($this->config)) {
             throw new RuntimeException(
@@ -176,7 +176,7 @@ class Cache implements CacheInterface
      *
      * @return bool Vrai si les données ont été mises en cache avec succès, faux en cas d'échec
      */
-    public function write(string $key, mixed $value, DateInterval|int|null $ttl = null): bool
+    public function write(string $key, mixed $value, null|DateInterval|int $ttl = null): bool
     {
         if (is_resource($value)) {
             return false;
@@ -201,7 +201,7 @@ class Cache implements CacheInterface
     /**
      * {@inheritDoc}
      */
-    public function set(string $key, mixed $value, DateInterval|int|null $ttl = null): bool
+    public function set(string $key, mixed $value, null|DateInterval|int $ttl = null): bool
     {
         return $this->write($key, $value, $ttl);
     }
@@ -226,7 +226,7 @@ class Cache implements CacheInterface
      *
      * @throws InvalidArgumentException
      */
-    public function writeMany(iterable $data, DateInterval|int|null $ttl = null): bool
+    public function writeMany(iterable $data, null|DateInterval|int $ttl = null): bool
     {
         return $this->factory()->setMultiple($data, $ttl);
     }
@@ -234,7 +234,7 @@ class Cache implements CacheInterface
     /**
      * {@inheritDoc}
      */
-    public function setMultiple(iterable $values, DateInterval|int|null $ttl = null): bool
+    public function setMultiple(iterable $values, null|DateInterval|int $ttl = null): bool
     {
         return $this->writeMany($values, $ttl);
     }

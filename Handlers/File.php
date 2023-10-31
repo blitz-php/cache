@@ -50,7 +50,7 @@ class File extends BaseHandler
         'duration'  => 3600,
         'groups'    => [],
         'lock'      => true,
-        'mask'      => 0664,
+        'mask'      => 0o664,
         'path'      => null,
         'prefix'    => 'blitz_',
         'serialize' => true,
@@ -84,7 +84,7 @@ class File extends BaseHandler
     /**
      * {@inheritDoc}
      */
-    public function set(string $key, mixed $value, DateInterval|int|null $ttl = null): bool
+    public function set(string $key, mixed $value, null|DateInterval|int $ttl = null): bool
     {
         if ($value === '' || ! $this->_init) {
             return false;
@@ -218,6 +218,7 @@ class File extends BaseHandler
             RecursiveIteratorIterator::SELF_FIRST
         );
         $cleared = [];
+
         /** @var SplFileInfo $fileInfo */
         foreach ($contents as $fileInfo) {
             if ($fileInfo->isFile()) {
@@ -335,7 +336,7 @@ class File extends BaseHandler
         $dir = $this->_config['path'] . $groups;
 
         if (! is_dir($dir)) {
-            mkdir($dir, 0775, true);
+            mkdir($dir, 0o775, true);
         }
 
         $path = new SplFileInfo($dir . $key);
@@ -381,7 +382,7 @@ class File extends BaseHandler
         $success = true;
         if (! is_dir($path)) {
             // phpcs:disable
-            $success = @mkdir($path, 0775, true);
+            $success = @mkdir($path, 0o775, true);
             // phpcs:enable
         }
 
@@ -436,7 +437,7 @@ class File extends BaseHandler
                 }
 
                 $hasPrefix = $prefix === ''
-                    || strpos($current->getBasename(), $prefix) === 0;
+                    || str_starts_with($current->getBasename(), $prefix);
                 if ($hasPrefix === false) {
                     return false;
                 }

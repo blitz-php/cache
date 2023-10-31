@@ -242,7 +242,7 @@ class Memcached extends BaseHandler
     public function parseServerString(string $server): array
     {
         $socketTransport = 'unix://';
-        if (strpos($server, $socketTransport) === 0) {
+        if (str_starts_with($server, $socketTransport)) {
             return [substr($server, strlen($socketTransport)), 0];
         }
         if (substr($server, 0, 1) === '[') {
@@ -280,7 +280,7 @@ class Memcached extends BaseHandler
      *
      * @see https://www.php.net/manual/en/memcached.set.php
      */
-    public function set(string $key, mixed $value, DateInterval|int|null $ttl = null): bool
+    public function set(string $key, mixed $value, null|DateInterval|int $ttl = null): bool
     {
         $duration = $this->duration($ttl);
 
@@ -290,7 +290,7 @@ class Memcached extends BaseHandler
     /**
      * {@inheritDoc}
      */
-    public function setMultiple(iterable $values, DateInterval|int|null $ttl = null): bool
+    public function setMultiple(iterable $values, null|DateInterval|int $ttl = null): bool
     {
         $cacheData = [];
 
@@ -388,7 +388,7 @@ class Memcached extends BaseHandler
         }
 
         foreach ($keys as $key) {
-            if (strpos($key, $this->_config['prefix']) === 0) {
+            if (str_starts_with($key, $this->_config['prefix'])) {
                 $this->_Memcached->delete($key);
             }
         }
