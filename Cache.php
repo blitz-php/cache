@@ -159,7 +159,7 @@ class Cache implements CacheInterface
     }
 
     /**
-     * Écrivez les données de la clé dans le cache.
+     * Persiste les données dans le cache, référencées de manière unique par une clé avec un temps d'expiration TTL optionnel.
      *
      * ### Utilisation :
      *
@@ -240,7 +240,7 @@ class Cache implements CacheInterface
     }
 
     /**
-     * Lire une clé du cache.
+     * Récupère une valeur dans le cache.
      *
      * ### Utilisation :
      *
@@ -263,7 +263,7 @@ class Cache implements CacheInterface
     }
 
     /**
-     * Lire plusieurs clés du cache.
+     * Permet d'obtenir plusieurs éléments de cache à partir de leurs clés uniques.
      *
      * ### Utilisation :
      *
@@ -340,7 +340,7 @@ class Cache implements CacheInterface
     }
 
     /**
-     * Supprimez de nombreuses clés du cache.
+     * Supprime plusieurs éléments du cache en une seule opération.
      *
      * ### Utilisation :
      *
@@ -368,7 +368,7 @@ class Cache implements CacheInterface
     }
 
     /**
-     * Supprimez toutes les clés du cache.
+     * Supprime toutes les clés du cache.
      */
     public function clear(): bool
     {
@@ -376,7 +376,7 @@ class Cache implements CacheInterface
     }
 
     /**
-     * Supprimez toutes les clés du cache appartenant au même groupe.
+     * Supprime toutes les clés du cache appartenant au même groupe.
      */
     public function clearGroup(string $group): bool
     {
