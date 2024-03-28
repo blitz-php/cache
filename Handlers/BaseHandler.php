@@ -148,19 +148,45 @@ abstract class BaseHandler implements CacheInterface
     }
 
     /**
-     * Obtenez un élément du cache ou exécutez la fermeture donnée et stockez le résultat.
+     * Fournit la possibilité de faire facilement la mise en cache de lecture.
      *
-     * @param Closure $callback Valeur de retour du rappel
+     * Lorsqu'elle est appelée si la clé $ n'est pas définie dans $config, la fonction $callable
+     * sera invoqué. Les résultats seront ensuite stockés dans la configuration du cache
+     * à la clé.
+     *
+     * Exemples:
+     *
+     * En utilisant une Closure pour fournir des données, supposez que `$this` est un objet Table :
+     *
+     * ```
+     * $resultats = $cache->remember('all_articles', function() {
+     * 		return $this->find('all')->toArray();
+     * });
+     * ```
+     *
+     * @param string   $key      La clé de cache sur laquelle lire/stocker les données.
+     * @param callable|DateInterval|int|null $ttl   Facultatif. La valeur TTL de cet élément. Si aucune valeur n'est envoyée et
+     *                                     le pilote prend en charge TTL, la bibliothèque peut définir une valeur par défaut
+     *                                     pour cela ou laissez le conducteur s'en occuper.
+     *
+     * @param callable $callable Le callback qui fournit des données dans le cas où
+     *                           la clé de cache est vide. Peut être n'importe quel type appelable pris en charge par votre PHP.
+     *
+     * @return mixed Si la clé est trouvée : les données en cache.
+     *               Si la clé n'est pas trouvée, la valeur renvoyée par le callable.
      */
-    public function remember(string $key, int $ttl, Closure $callback): mixed
+    public function remember(string $key, callable|DateInterval|int|null $ttl, callable $callable): mixed
     {
-        $value = $this->get($key);
-
-        if ($value !== null) {
-            return $value;
+        if (is_callable($ttl)) {
+            $callable = $ttl;
+            $ttl      = null;
         }
 
-        $this->set($key, $value = $callback(), $ttl);
+		if (null !== $value = $this->get($key)) {
+			return $value;
+		}
+
+        $this->set($key, $value = $callable(), $ttl);
 
         return $value;
     }

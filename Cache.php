@@ -99,6 +99,8 @@ class Cache implements CacheInterface
 
     /**
      * Tente de créer le gestionnaire de cache souhaité
+	 *
+	 * @return BaseHandler
      */
     protected function factory(): CacheInterface
     {
@@ -248,10 +250,26 @@ class Cache implements CacheInterface
      *
      * ```
      * $cache->read('my_data');
+	 * ```
      */
     public function read(string $key, mixed $default = null): mixed
     {
-        return $this->factory()->get($key, $default);
+        if (is_callable($default)) {
+            $_default = $default;
+            $default  = null;
+        }
+
+        $result = $this->factory()->get($key, $default);
+
+        if (empty($result) && isset($_default)) {
+            if (function_exists('service')) {
+                $result = service('container')->call($_default);
+            } else {
+                $result = call_user_func($_default);
+            }
+        }
+
+        return $result;
     }
 
     /**
@@ -270,11 +288,27 @@ class Cache implements CacheInterface
      * Lecture de plusieurs clés à partir de la configuration de cache active.
      *
      * ```
-     * $cache->readMany(['my_data_1', 'my_data_2]);
+     * $cache->readMany(['my_data_1', 'my_data_2']);
+	 * ```
      */
     public function readMany(iterable $keys, mixed $default = null): iterable
     {
-        return $this->factory()->getMultiple($keys, $default);
+        if (is_callable($default)) {
+            $_default = $default;
+            $default  = null;
+        }
+
+        $result = $this->factory()->getMultiple($keys, $default);
+
+        if (empty($result) && isset($_default)) {
+            if (function_exists('service')) {
+                $result = service('container')->call($_default);
+            } else {
+                $result = call_user_func($_default);
+            }
+        }
+
+        return $result;
     }
 
     /**
@@ -442,7 +476,7 @@ class Cache implements CacheInterface
      * ```
      *
      * @param string   $key      La clé de cache sur laquelle lire/stocker les données.
-     * @param DateInterval|int|null $ttl   Facultatif. La valeur TTL de cet élément. Si aucune valeur n'est envoyée et
+     * @param callable|DateInterval|int|null $ttl   Facultatif. La valeur TTL de cet élément. Si aucune valeur n'est envoyée et
      *                                     le pilote prend en charge TTL, la bibliothèque peut définir une valeur par défaut
      *                                     pour cela ou laissez le conducteur s'en occuper.
      *
@@ -454,19 +488,7 @@ class Cache implements CacheInterface
      */
     public function remember(string $key, callable|DateInterval|int|null $ttl, callable $callable): mixed
     {
-        if (is_callable($ttl)) {
-            $callable = $ttl;
-            $ttl      = null;
-        }
-
-        $existing = $this->read($key);
-        if ($existing !== null) {
-            return $existing;
-        }
-        $results = $callable();
-        $this->write($key, $results, $ttl);
-
-        return $results;
+        return $this->factory()->remember($key, $callable, $ttl);
     }
 
     /**
