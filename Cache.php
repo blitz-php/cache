@@ -13,6 +13,7 @@ namespace BlitzPHP\Cache;
 
 use BlitzPHP\Cache\Handlers\BaseHandler;
 use BlitzPHP\Cache\Handlers\Dummy;
+use BlitzPHP\Utilities\Helpers;
 use DateInterval;
 use RuntimeException;
 
@@ -526,5 +527,35 @@ class Cache implements CacheInterface
     public function has(string $key): bool
     {
         return $this->factory()->has($key);
+    }
+
+	/**
+     * Récupérez un élément du cache et supprimez-le.
+     *
+     * @template TCacheValue
+     *
+     * @param  TCacheValue|(\Closure(): TCacheValue)  $default
+     * @return (TCacheValue is null ? mixed : TCacheValue)
+     */
+    public function pull(string $key, $default = null)
+    {
+        return Helpers::tap($this->read($key, $default), function () use ($key) {
+            $this->delete($key);
+        });
+    }
+
+	/**
+     * Récupérez un élément du cache et supprimez-le.
+     *
+     * @template TCacheValue
+     *
+     * @param  TCacheValue|(\Closure(): TCacheValue)  $default
+     * @return (TCacheValue is null ? mixed : TCacheValue)
+     */
+    public function pullMany(iterable $keys, $default = null)
+    {
+        return Helpers::tap($this->readMany($keys, $default), function () use ($keys) {
+            $this->deleteMany($keys);
+        });
     }
 }
