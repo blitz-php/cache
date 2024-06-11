@@ -487,9 +487,9 @@ class Cache implements CacheInterface
      * @return mixed Si la clé est trouvée : les données en cache.
      *               Si la clé n'est pas trouvée, la valeur renvoyée par le callable.
      */
-    public function remember(string $key, callable|DateInterval|int|null $ttl, callable $callable): mixed
+    public function remember(string $key, callable|DateInterval|int|null $ttl, callable $callable = null): mixed
     {
-        return $this->factory()->remember($key, $callable, $ttl);
+        return $this->factory()->remember($key, $ttl, $callable);
     }
 
     /**
