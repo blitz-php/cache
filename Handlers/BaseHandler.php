@@ -11,8 +11,8 @@
 
 namespace BlitzPHP\Cache\Handlers;
 
-use BlitzPHP\Cache\CacheInterface;
 use BlitzPHP\Cache\InvalidArgumentException;
+use BlitzPHP\Contracts\Cache\CacheInterface;
 use BlitzPHP\Traits\InstanceConfigTrait;
 use BlitzPHP\Utilities\Helpers;
 use Closure;

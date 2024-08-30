@@ -13,6 +13,7 @@ namespace BlitzPHP\Cache;
 
 use BlitzPHP\Cache\Handlers\BaseHandler;
 use BlitzPHP\Cache\Handlers\Dummy;
+use BlitzPHP\Contracts\Cache\CacheInterface;
 use BlitzPHP\Utilities\Helpers;
 use DateInterval;
 use RuntimeException;
