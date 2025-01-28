@@ -15,7 +15,26 @@ use DateInterval;
 
 final class FileVarExportHandler extends BaseHandler
 {
-	private string $path = FRAMEWORK_STORAGE_PATH . 'cache';
+    /**
+     * Dossier de stockage des fichiers mis en cache.
+     */
+	private string $path;
+
+    /**
+     * Constructeur
+     */
+    public function __construct(?string $path = null)
+    {
+        if (null === $path) {
+            $path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'blitz-php' . DIRECTORY_SEPARATOR . 'cache';
+        }
+
+        $this->path = rtrim($path, '/\\');
+
+        if (!is_dir($this->path)) {
+            mkdir($this->path, 0777, true);
+        }
+    }
 
     /**
      * {@inheritDoc}
