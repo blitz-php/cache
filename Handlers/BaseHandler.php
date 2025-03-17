@@ -83,6 +83,10 @@ abstract class BaseHandler implements CacheInterface
      */
     public function init(array $config = []): bool
     {
+        if (isset($config['prefix'])) {
+           $config['prefix'] = str_replace(' ', '-', strtolower($config['prefix'])); 
+        }
+
         $this->setConfig($config);
 
         if (! empty($this->_config['groups'])) {
