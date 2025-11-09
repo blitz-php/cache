@@ -84,7 +84,7 @@ abstract class BaseHandler implements CacheInterface
     public function init(array $config = []): bool
     {
         if (isset($config['prefix'])) {
-           $config['prefix'] = str_replace(' ', '-', strtolower($config['prefix'])); 
+            $config['prefix'] = str_replace(' ', '-', strtolower($config['prefix']));
         }
 
         $this->setConfig($config);
@@ -168,27 +168,26 @@ abstract class BaseHandler implements CacheInterface
      * });
      * ```
      *
-     * @param string   $key      La clé de cache sur laquelle lire/stocker les données.
-     * @param callable|DateInterval|int|null $ttl   Facultatif. La valeur TTL de cet élément. Si aucune valeur n'est envoyée et
-     *                                     le pilote prend en charge TTL, la bibliothèque peut définir une valeur par défaut
-     *                                     pour cela ou laissez le conducteur s'en occuper.
-     *
-     * @param callable $callable Le callback qui fournit des données dans le cas où
-     *                           la clé de cache est vide. Peut être n'importe quel type appelable pris en charge par votre PHP.
+     * @param string                         $key      La clé de cache sur laquelle lire/stocker les données.
+     * @param callable|DateInterval|int|null $ttl      Facultatif. La valeur TTL de cet élément. Si aucune valeur n'est envoyée et
+     *                                                 le pilote prend en charge TTL, la bibliothèque peut définir une valeur par défaut
+     *                                                 pour cela ou laissez le conducteur s'en occuper.
+     * @param callable                       $callable Le callback qui fournit des données dans le cas où
+     *                                                 la clé de cache est vide. Peut être n'importe quel type appelable pris en charge par votre PHP.
      *
      * @return mixed Si la clé est trouvée : les données en cache.
      *               Si la clé n'est pas trouvée, la valeur renvoyée par le callable.
      */
-    public function remember(string $key, callable|DateInterval|int|null $ttl, callable $callable = null): mixed
+    public function remember(string $key, callable|DateInterval|int|null $ttl, ?callable $callable = null): mixed
     {
         if (is_callable($ttl)) {
             $callable = $ttl;
             $ttl      = null;
         }
 
-		if (null !== $value = $this->get($key)) {
-			return $value;
-		}
+        if (null !== $value = $this->get($key)) {
+            return $value;
+        }
 
         $this->set($key, $value = $callable(), $ttl);
 
@@ -244,7 +243,7 @@ abstract class BaseHandler implements CacheInterface
      * @throws InvalidArgumentException Si $values n'est ni un tableau ni un Traversable,
      *                                  ou si l'une des valeurs $ n'est pas une valeur légale.
      */
-    public function setMultiple(iterable $values, null|DateInterval|int $ttl = null): bool
+    public function setMultiple(iterable $values, DateInterval|int|null $ttl = null): bool
     {
         $this->ensureValidType($values, self::CHECK_KEY);
 
@@ -329,7 +328,7 @@ abstract class BaseHandler implements CacheInterface
      *
      * @return bool Vrai en cas de succès et faux en cas d'échec.
      */
-    abstract public function set(string $key, mixed $value, null|DateInterval|int $ttl = null): bool;
+    abstract public function set(string $key, mixed $value, DateInterval|int|null $ttl = null): bool;
 
     /**
      * {@inheritDoc}
@@ -382,7 +381,7 @@ abstract class BaseHandler implements CacheInterface
      * et renvoie la "valeur du groupe" pour chacun d'eux, c'est
      * le jeton représentant chaque groupe dans la clé de cache
      *
-     * @return string[]
+     * @return list<string>
      */
     public function groups(): array
     {
@@ -433,7 +432,7 @@ abstract class BaseHandler implements CacheInterface
      * @param DateInterval|int|null $ttl La valeur TTL de cet élément. Si null est envoyé,
      *                                   La durée par défaut du conducteur sera utilisée.
      */
-    protected function duration(null|DateInterval|int $ttl): int
+    protected function duration(DateInterval|int|null $ttl): int
     {
         if ($ttl === null) {
             return $this->_config['duration'];

@@ -24,7 +24,7 @@ class Apcu extends BaseHandler
      * Contient les noms de groupe compilés
      * (préfixé par le préfixe de configuration global)
      *
-     * @var string[]
+     * @var list<string>
      */
     protected array $_compiledGroupNames = [];
 
@@ -43,7 +43,7 @@ class Apcu extends BaseHandler
     /**
      * {@inheritDoc}
      */
-    public function set(string $key, mixed $value, null|DateInterval|int $ttl = null): bool
+    public function set(string $key, mixed $value, DateInterval|int|null $ttl = null): bool
     {
         $key      = $this->_key($key);
         $duration = $this->duration($ttl);

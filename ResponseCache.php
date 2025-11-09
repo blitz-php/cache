@@ -30,13 +30,13 @@ final class ResponseCache
     private int $ttl = 0;
 
     /**
-     * @param bool|string[] $cacheQueryString S'il faut prendre en compte la chaîne de requête URL lors de la génération des fichiers de cache de sortie.
-     *                                        Les options valides sont :
-     *                                        false      = Désactivé
-     *                                        true       = Activé, prend en compte tous les paramètres de requête.
-     *                                        Veuillez noter que cela peut entraîner de nombreux fichiers de cache générés encore et encore pour la même page.
-     *                                        array('q') = Activé, mais ne prend en compte que la liste spécifiée de paramètres de requête.
-	 */
+     * @param bool|list<string> $cacheQueryString S'il faut prendre en compte la chaîne de requête URL lors de la génération des fichiers de cache de sortie.
+     *                                            Les options valides sont :
+     *                                            false      = Désactivé
+     *                                            true       = Activé, prend en compte tous les paramètres de requête.
+     *                                            Veuillez noter que cela peut entraîner de nombreux fichiers de cache générés encore et encore pour la même page.
+     *                                            array('q') = Activé, mais ne prend en compte que la liste spécifiée de paramètres de requête.
+     */
     public function __construct(private CacheInterface $cache, private array|bool $cacheQueryString = false)
     {
     }

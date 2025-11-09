@@ -15,6 +15,7 @@ use BlitzPHP\Cache\Handlers\BaseHandler;
 use BlitzPHP\Cache\Handlers\Dummy;
 use BlitzPHP\Contracts\Cache\CacheInterface;
 use BlitzPHP\Utilities\Helpers;
+use Closure;
 use DateInterval;
 use RuntimeException;
 
@@ -58,7 +59,7 @@ class Cache implements CacheInterface
     protected static array $validHandlers = [
         'apcu'      => Handlers\Apcu::class,
         'array'     => Handlers\ArrayHandler::class,
-        'dummy'     => Handlers\Dummy::class,
+        'dummy'     => Dummy::class,
         'file'      => Handlers\File::class,
         'memcached' => Handlers\Memcached::class,
         'redis'     => Handlers\RedisHandler::class,
@@ -101,8 +102,8 @@ class Cache implements CacheInterface
 
     /**
      * Tente de créer le gestionnaire de cache souhaité
-	 *
-	 * @return BaseHandler
+     *
+     * @return BaseHandler
      */
     protected function factory(): CacheInterface
     {
@@ -180,7 +181,7 @@ class Cache implements CacheInterface
      *
      * @return bool Vrai si les données ont été mises en cache avec succès, faux en cas d'échec
      */
-    public function write(string $key, mixed $value, null|DateInterval|int $ttl = null): bool
+    public function write(string $key, mixed $value, DateInterval|int|null $ttl = null): bool
     {
         if (is_resource($value)) {
             return false;
@@ -205,7 +206,7 @@ class Cache implements CacheInterface
     /**
      * {@inheritDoc}
      */
-    public function set(string $key, mixed $value, null|DateInterval|int $ttl = null): bool
+    public function set(string $key, mixed $value, DateInterval|int|null $ttl = null): bool
     {
         return $this->write($key, $value, $ttl);
     }
@@ -230,7 +231,7 @@ class Cache implements CacheInterface
      *
      * @throws InvalidArgumentException
      */
-    public function writeMany(iterable $data, null|DateInterval|int $ttl = null): bool
+    public function writeMany(iterable $data, DateInterval|int|null $ttl = null): bool
     {
         return $this->factory()->setMultiple($data, $ttl);
     }
@@ -238,7 +239,7 @@ class Cache implements CacheInterface
     /**
      * {@inheritDoc}
      */
-    public function setMultiple(iterable $values, null|DateInterval|int $ttl = null): bool
+    public function setMultiple(iterable $values, DateInterval|int|null $ttl = null): bool
     {
         return $this->writeMany($values, $ttl);
     }
@@ -252,7 +253,7 @@ class Cache implements CacheInterface
      *
      * ```
      * $cache->read('my_data');
-	 * ```
+     * ```
      */
     public function read(string $key, mixed $default = null): mixed
     {
@@ -267,7 +268,7 @@ class Cache implements CacheInterface
             if (function_exists('service')) {
                 $result = service('container')->call($_default);
             } else {
-                $result = call_user_func($_default);
+                $result = $_default();
             }
         }
 
@@ -291,7 +292,7 @@ class Cache implements CacheInterface
      *
      * ```
      * $cache->readMany(['my_data_1', 'my_data_2']);
-	 * ```
+     * ```
      */
     public function readMany(iterable $keys, mixed $default = null): iterable
     {
@@ -306,7 +307,7 @@ class Cache implements CacheInterface
             if (function_exists('service')) {
                 $result = service('container')->call($_default);
             } else {
-                $result = call_user_func($_default);
+                $result = $_default();
             }
         }
 
@@ -477,18 +478,17 @@ class Cache implements CacheInterface
      * });
      * ```
      *
-     * @param string   $key      La clé de cache sur laquelle lire/stocker les données.
-     * @param callable|DateInterval|int|null $ttl   Facultatif. La valeur TTL de cet élément. Si aucune valeur n'est envoyée et
-     *                                     le pilote prend en charge TTL, la bibliothèque peut définir une valeur par défaut
-     *                                     pour cela ou laissez le conducteur s'en occuper.
-     *
-     * @param callable $callable Le callback qui fournit des données dans le cas où
-     *                           la clé de cache est vide. Peut être n'importe quel type appelable pris en charge par votre PHP.
+     * @param string                         $key      La clé de cache sur laquelle lire/stocker les données.
+     * @param callable|DateInterval|int|null $ttl      Facultatif. La valeur TTL de cet élément. Si aucune valeur n'est envoyée et
+     *                                                 le pilote prend en charge TTL, la bibliothèque peut définir une valeur par défaut
+     *                                                 pour cela ou laissez le conducteur s'en occuper.
+     * @param callable                       $callable Le callback qui fournit des données dans le cas où
+     *                                                 la clé de cache est vide. Peut être n'importe quel type appelable pris en charge par votre PHP.
      *
      * @return mixed Si la clé est trouvée : les données en cache.
      *               Si la clé n'est pas trouvée, la valeur renvoyée par le callable.
      */
-    public function remember(string $key, callable|DateInterval|int|null $ttl, callable $callable = null): mixed
+    public function remember(string $key, callable|DateInterval|int|null $ttl, ?callable $callable = null): mixed
     {
         return $this->factory()->remember($key, $ttl, $callable);
     }
@@ -530,12 +530,13 @@ class Cache implements CacheInterface
         return $this->factory()->has($key);
     }
 
-	/**
+    /**
      * Récupérez un élément du cache et supprimez-le.
      *
      * @template TCacheValue
      *
-     * @param  TCacheValue|(\Closure(): TCacheValue)  $default
+     * @param (Closure(): TCacheValue)|TCacheValue $default
+     *
      * @return (TCacheValue is null ? mixed : TCacheValue)
      */
     public function pull(string $key, $default = null)
@@ -545,12 +546,13 @@ class Cache implements CacheInterface
         });
     }
 
-	/**
+    /**
      * Récupérez un élément du cache et supprimez-le.
      *
      * @template TCacheValue
      *
-     * @param  TCacheValue|(\Closure(): TCacheValue)  $default
+     * @param (Closure(): TCacheValue)|TCacheValue $default
+     *
      * @return (TCacheValue is null ? mixed : TCacheValue)
      */
     public function pullMany(iterable $keys, $default = null)
