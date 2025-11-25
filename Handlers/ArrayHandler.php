@@ -87,7 +87,10 @@ class ArrayHandler extends BaseHandler
     {
         if ($this->get($key) === null) {
             $this->set($key, 0);
+
+			return 0;
         }
+
         $key = $this->_key($key);
         $this->data[$key]['val'] -= $offset;
 

@@ -47,13 +47,14 @@ class File extends BaseHandler
      * @var array<string, mixed>
      */
     protected array $_defaultConfig = [
-        'duration'  => 3600,
-        'groups'    => [],
-        'lock'      => true,
-        'mask'      => 0o664,
-        'path'      => null,
-        'prefix'    => 'blitz_',
-        'serialize' => true,
+		'duration'  => 3600,
+		'groups'    => [],
+		'lock'      => true,
+		'mask'      => 0o664,
+		'dirMask'   => 0770,
+		'path'      => null,
+		'prefix'    => 'blitz_',
+		'serialize' => true,
     ];
 
     /**
@@ -104,11 +105,9 @@ class File extends BaseHandler
         $contents = implode('', [$expires, PHP_EOL, $value, PHP_EOL]);
 
         if ($this->_config['lock']) {
-            /** @psalm-suppress PossiblyNullReference */
             $this->_File->flock(LOCK_EX);
         }
 
-        /** @psalm-suppress PossiblyNullReference */
         $this->_File->rewind();
         $success = $this->_File->ftruncate(0)
             && $this->_File->fwrite($contents)
@@ -117,7 +116,7 @@ class File extends BaseHandler
         if ($this->_config['lock']) {
             $this->_File->flock(LOCK_UN);
         }
-        $this->_File = null;
+        unset($this->_File);
 
         return $success;
     }
@@ -134,11 +133,9 @@ class File extends BaseHandler
         }
 
         if ($this->_config['lock']) {
-            /** @psalm-suppress PossiblyNullReference */
             $this->_File->flock(LOCK_SH);
         }
 
-        /** @psalm-suppress PossiblyNullReference */
         $this->_File->rewind();
         $time      = time();
         $cachetime = (int) $this->_File->current();
@@ -155,7 +152,6 @@ class File extends BaseHandler
         $this->_File->next();
 
         while ($this->_File->valid()) {
-            /** @psalm-suppress PossiblyInvalidOperand */
             $data .= $this->_File->current();
             $this->_File->next();
         }
@@ -184,7 +180,6 @@ class File extends BaseHandler
             return false;
         }
 
-        /** @psalm-suppress PossiblyNullReference */
         $path        = $this->_File->getRealPath();
         $this->_File = null;
 
@@ -205,7 +200,7 @@ class File extends BaseHandler
         if (! $this->_init) {
             return false;
         }
-        $this->_File = null;
+        unset($this->_File);
 
         $this->_clearDirectory($this->_config['path']);
 
@@ -336,7 +331,7 @@ class File extends BaseHandler
         $dir = $this->_config['path'] . $groups;
 
         if (! is_dir($dir)) {
-            mkdir($dir, 0o775, true);
+            mkdir($dir, $this->_config['dirMask'], true);
         }
 
         $path = new SplFileInfo($dir . $key);
@@ -382,7 +377,7 @@ class File extends BaseHandler
         $success = true;
         if (! is_dir($path)) {
             // phpcs:disable
-            $success = @mkdir($path, 0o775, true);
+            $success = @mkdir($path, $this->_config['dirMask'], true);
             // phpcs:enable
         }
 
@@ -390,7 +385,7 @@ class File extends BaseHandler
         if (! $success || ($this->_init && ! $isWritableDir)) {
             $this->_init = false;
             trigger_error(sprintf(
-                '%s is not writable',
+                '%s n\'est pas ecrivable',
                 $this->_config['path']
             ), E_USER_WARNING);
         }
@@ -405,14 +400,7 @@ class File extends BaseHandler
     {
         $key = parent::_key($key);
 
-        if (preg_match('/[\/\\<>?:|*"]/', $key)) {
-            throw new InvalidArgumentException(
-                "La clé de cache `{$key}` contient des caractères non valides. " .
-                'Vous ne pouvez pas utiliser /, \\, <, >, ?, :, |, * ou " dans les clés de cache.'
-            );
-        }
-
-        return $key;
+        return rawurlencode($key);
     }
 
     /**
@@ -420,7 +408,7 @@ class File extends BaseHandler
      */
     public function clearGroup(string $group): bool
     {
-        $this->_File = null;
+        unset($this->_File);
 
         $prefix = (string) $this->_config['prefix'];
 
@@ -442,16 +430,15 @@ class File extends BaseHandler
                     return false;
                 }
 
-                $pos = strpos(
+                return str_contains(
                     $current->getPathname(),
-                    DIRECTORY_SEPARATOR . $group . DIRECTORY_SEPARATOR
+                    DIRECTORY_SEPARATOR . $group . DIRECTORY_SEPARATOR,
                 );
-
-                return $pos !== false;
             }
         );
 
         foreach ($filtered as $object) {
+			/** @var \SplFileInfo $object */
             $path = $object->getPathname();
             unset($object);
             // phpcs:ignore

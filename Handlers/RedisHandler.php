@@ -45,17 +45,19 @@ class RedisHandler extends BaseHandler
      * - `unix_socket` Chemin vers le fichier socket unix (par défaut : false)
      */
     protected array $_defaultConfig = [
-        'database'    => 0,
-        'duration'    => 3600,
-        'groups'      => [],
-        'password'    => false,
-        'persistent'  => true,
-        'port'        => 6379,
-        'prefix'      => 'blitz_',
-        'host'        => null,
-        'server'      => '127.0.0.1',
-        'timeout'     => 0,
-        'unix_socket' => false,
+        'database'         => 0,
+        'duration'         => 3600,
+        'groups'           => [],
+        'password'         => false,
+        'persistent'       => true,
+        'port'             => 6379,
+        'prefix'           => 'blitz_',
+        'host'             => null,
+        'server'           => '127.0.0.1',
+        'timeout'          => 0,
+        'unix_socket'      => false,
+        'scanCount'        => 10,
+        'clearUsesFlushDb' => false,
     ];
 
     /**
@@ -83,24 +85,29 @@ class RedisHandler extends BaseHandler
      */
     protected function _connect(): bool
     {
+        $tls = $this->_config['tls'] === true ? 'tls://' : '';
+
+        $map = [
+            'ssl_ca'   => 'cafile',
+            'ssl_key'  => 'local_pk',
+            'ssl_cert' => 'local_cert',
+        ];
+
+        $ssl = [];
+        foreach ($map as $key => $context) {
+            if (!empty($this->_config[$key])) {
+                $ssl[$context] = $this->_config[$key];
+            }
+        }
+
         try {
-            $this->_Redis = new Redis();
+            $this->_Redis = $this->_createRedisInstance();
             if (! empty($this->_config['unix_socket'])) {
                 $return = $this->_Redis->connect($this->_config['unix_socket']);
             } elseif (empty($this->_config['persistent'])) {
-                $return = $this->_Redis->connect(
-                    $this->_config['server'],
-                    (int) $this->_config['port'],
-                    (int) $this->_config['timeout']
-                );
+                $return = $this->_connectTransient($tls . $this->_config['server'], $ssl);
             } else {
-                $persistentId = $this->_config['port'] . $this->_config['timeout'] . $this->_config['database'];
-                $return       = $this->_Redis->pconnect(
-                    $this->_config['server'],
-                    (int) $this->_config['port'],
-                    (int) $this->_config['timeout'],
-                    $persistentId
-                );
+                $return = $this->_connectPersistent($tls . $this->_config['server'], $ssl);
             }
         } catch (RedisException $e) {
             if (function_exists('logger')) {
@@ -116,10 +123,65 @@ class RedisHandler extends BaseHandler
             $return = $this->_Redis->auth($this->_config['password']);
         }
         if ($return) {
-            $return = $this->_Redis->select((int) $this->_config['database']);
+            return $this->_Redis->select((int) $this->_config['database']);
         }
 
         return $return;
+    }
+
+    /**
+     * Se connecte au serveur Redis en utilisant une nouvelle connexion.
+     *
+     * @throws \RedisException
+     */
+    protected function _connectTransient(string $server, array $ssl): bool
+    {
+        if ($ssl === []) {
+            return $this->_Redis->connect(
+                $server,
+                (int) $this->_config['port'],
+                (int) $this->_config['timeout'],
+            );
+        }
+
+        return $this->_Redis->connect(
+            $server,
+            (int) $this->_config['port'],
+            (int) $this->_config['timeout'],
+            null,
+            0,
+            0.0,
+            ['ssl' => $ssl],
+        );
+    }
+
+    /**
+     * Se connecte au serveur Redis en utilisant une connexion persistente.
+     *
+     * @throws \RedisException
+     */
+    protected function _connectPersistent(string $server, array $ssl): bool
+    {
+        $persistentId = $this->_config['port'] . $this->_config['timeout'] . $this->_config['database'];
+
+        if ($ssl === []) {
+            return $this->_Redis->pconnect(
+                $server,
+                (int) $this->_config['port'],
+                (int) $this->_config['timeout'],
+                $persistentId,
+            );
+        }
+
+        return $this->_Redis->pconnect(
+            $server,
+            (int) $this->_config['port'],
+            (int) $this->_config['timeout'],
+            $persistentId,
+            0,
+            0.0,
+            ['ssl' => $ssl],
+        );
     }
 
     /**
@@ -190,7 +252,19 @@ class RedisHandler extends BaseHandler
     {
         $key = $this->_key($key);
 
-        return $this->_Redis->del($key) > 0;
+        return (int) $this->_Redis->del($key) > 0;
+    }
+
+    /**
+     * Supprime une clé du cache de manière asynchrone
+     *
+     * Supprime juste une clé du cahce. Le retrait actuel se fera plutard de manière asynchrone.
+     */
+    public function deleteAsync(string $key): bool
+    {
+        $key = $this->_key($key);
+
+        return (int) $this->_Redis->unlink($key) > 0;
     }
 
     /**
@@ -198,6 +272,12 @@ class RedisHandler extends BaseHandler
      */
     public function clear(): bool
     {
+		 if ($this->getConfig('clearUsesFlushDb')) {
+            $this->_Redis->flushDB(false);
+
+            return true;
+        }
+
         $this->_Redis->setOption(Redis::OPT_SCAN, (string) Redis::SCAN_RETRY);
 
         $isAllDeleted = true;
@@ -212,7 +292,40 @@ class RedisHandler extends BaseHandler
             }
 
             foreach ($keys as $key) {
-                $isDeleted    = ($this->_Redis->del($key) > 0);
+                $isDeleted    = ((int) $this->_Redis->del($key) > 0);
+                $isAllDeleted = $isAllDeleted && $isDeleted;
+            }
+        }
+
+        return $isAllDeleted;
+    }
+
+    /**
+     * Supprime toutes les clés du cache du cache en bloquant l'opération.
+     */
+    public function clearBlocking(): bool
+    {
+        if ($this->getConfig('clearUsesFlushDb')) {
+            $this->_Redis->flushDB(true);
+
+            return true;
+        }
+
+        $this->_Redis->setOption(Redis::OPT_SCAN, (string) Redis::SCAN_RETRY);
+
+        $isAllDeleted = true;
+        $iterator = null;
+        $pattern = $this->_config['prefix'] . '*';
+
+        while (true) {
+            $keys = $this->_Redis->scan($iterator, $pattern, (int)$this->_config['scanCount']);
+
+            if ($keys === false) {
+                break;
+            }
+
+            foreach ($keys as $key) {
+                $isDeleted = ((int)$this->_Redis->del($key) > 0);
                 $isAllDeleted = $isAllDeleted && $isDeleted;
             }
         }
@@ -296,6 +409,14 @@ class RedisHandler extends BaseHandler
         }
 
         return unserialize($value);
+    }
+
+    /**
+     * Cree une instance Redis.
+     */
+    protected function _createRedisInstance(): Redis
+    {
+        return new Redis();
     }
 
     /**

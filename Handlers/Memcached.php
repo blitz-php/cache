@@ -330,8 +330,11 @@ class Memcached extends BaseHandler
         }
 
         $values = $this->_Memcached->getMulti($cacheKeys);
-        $return = [];
+        if ($values === false) {
+            return array_fill_keys(array_keys($cacheKeys), $default);
+        }
 
+		$return = [];
         foreach ($cacheKeys as $original => $prefixed) {
             $return[$original] = $values[$prefixed] ?? $default;
         }
@@ -420,7 +423,7 @@ class Memcached extends BaseHandler
      */
     public function groups(): array
     {
-        if (empty($this->_compiledGroupNames)) {
+        if ($this->_compiledGroupNames === []) {
             foreach ($this->_config['groups'] as $group) {
                 $this->_compiledGroupNames[] = $this->_config['prefix'] . $group;
             }

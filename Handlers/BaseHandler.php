@@ -17,6 +17,7 @@ use BlitzPHP\Traits\InstanceConfigTrait;
 use BlitzPHP\Utilities\Helpers;
 use Closure;
 use DateInterval;
+use DateTime;
 use Exception;
 
 abstract class BaseHandler implements CacheInterface
@@ -128,20 +129,12 @@ abstract class BaseHandler implements CacheInterface
     /**
      * Assurez-vous de la validité du type d'argument et des clés de cache.
      *
-     * @param iterable $iterable L'itérable à vérifier.
      * @param string   $check    Indique s'il faut vérifier les clés ou les valeurs.
      *
      * @throws InvalidArgumentException
      */
-    protected function ensureValidType($iterable, string $check = self::CHECK_VALUE): void
+    protected function ensureValidType(iterable $iterable, string $check = self::CHECK_VALUE): void
     {
-        if (! is_iterable($iterable)) {
-            throw new InvalidArgumentException(sprintf(
-                'Un cache %s doit être soit un tableau soit un Traversable.',
-                $check === self::CHECK_VALUE ? 'key set' : 'set'
-            ));
-        }
-
         foreach ($iterable as $key => $value) {
             if ($check === self::CHECK_VALUE) {
                 $this->ensureValidKey($value);
@@ -247,6 +240,7 @@ abstract class BaseHandler implements CacheInterface
     {
         $this->ensureValidType($values, self::CHECK_KEY);
 
+		$restore = null;
         if ($ttl !== null) {
             $restore = $this->getConfig('duration');
             $this->setConfig('duration', $ttl);
@@ -262,7 +256,7 @@ abstract class BaseHandler implements CacheInterface
 
             return true;
         } finally {
-            if (isset($restore)) {
+            if($restore !== null) {
                 $this->setConfig('duration', $restore);
             }
         }
@@ -406,7 +400,7 @@ abstract class BaseHandler implements CacheInterface
 
         $prefix = '';
         if ($this->_groupPrefix) {
-            $prefix = md5(implode('_', $this->groups()));
+            $prefix = hash('xxh128', implode('_', $this->groups()));
         }
         $key = preg_replace('/[\s]+/', '_', $key);
 
@@ -439,9 +433,12 @@ abstract class BaseHandler implements CacheInterface
         }
 
         if (is_int($ttl)) {
-            return $ttl;
+            return max(0, $ttl);
         }
 
-        return (int) $ttl->format('%s');
+        /** @var DateTime $datetime */
+        $datetime = DateTime::createFromFormat('U', '0');
+
+        return (int) $datetime->add($ttl)->format('U');
     }
 }

@@ -55,14 +55,20 @@ final class ResponseCache
      */
     public function generateCacheKey(RequestInterface $request): string
     {
-        $uri = clone $request->getUri();
+        $uri = $request->getUri();
 
-        // @todo implementation de la recuperation des queriestring
-        /* $query = $this->cacheQueryString
-            ? $uri->getQuery(is_array($this->cacheQueryString) ? ['only' => $this->cacheQueryString] : [])
-            : ''; */
+		$query = '';
+		if ($this->cacheQueryString !== false) {
+			parse_str($uri->getQuery(), $queryParams);
 
-        $query = '';
+			if (is_array($this->cacheQueryString)) {
+				// Filtrer seulement les paramètres spécifiés
+				$queryParams = array_intersect_key($queryParams, array_flip($this->cacheQueryString));
+			}
+			// Trier pour garantir l'ordre et éviter les doublons avec paramètres dans un ordre différent
+			ksort($queryParams);
+			$query = http_build_query($queryParams);
+		}
 
         return md5($uri->withFragment('')->withQuery($query));
     }
@@ -95,11 +101,20 @@ final class ResponseCache
     public function get(ServerRequestInterface $request, ResponseInterface $response): ?ResponseInterface
     {
         if ($cachedResponse = $this->cache->get($this->generateCacheKey($request))) {
-            $cachedResponse = unserialize($cachedResponse);
+            if (!is_string($cachedResponse)) {
+				throw new Exception('Données de cache corrompues');
+			}
 
-            if (! is_array($cachedResponse) || ! isset($cachedResponse['output']) || ! isset($cachedResponse['headers'])) {
-                throw new Exception('Erreur lors de la désérialisation du cache de page');
-            }
+			$cachedResponse = unserialize($cachedResponse, ['allowed_classes' => false]);
+
+			if (!is_array($cachedResponse) || !isset($cachedResponse['output'], $cachedResponse['headers'])) {
+				throw new Exception('Structure de cache invalide');
+			}
+
+			// Validation des headers
+			if (!is_array($cachedResponse['headers'])) {
+				throw new Exception('Headers de cache invalides');
+			}
 
             $headers = $cachedResponse['headers'];
             $output  = $cachedResponse['output'];
