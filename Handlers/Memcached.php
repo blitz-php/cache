@@ -334,7 +334,8 @@ class Memcached extends BaseHandler
             return array_fill_keys(array_keys($cacheKeys), $default);
         }
 
-		$return = [];
+        $return = [];
+
         foreach ($cacheKeys as $original => $prefixed) {
             $return[$original] = $values[$prefixed] ?? $default;
         }

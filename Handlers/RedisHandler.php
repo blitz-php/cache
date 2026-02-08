@@ -94,8 +94,9 @@ class RedisHandler extends BaseHandler
         ];
 
         $ssl = [];
+
         foreach ($map as $key => $context) {
-            if (!empty($this->_config[$key])) {
+            if (! empty($this->_config[$key])) {
                 $ssl[$context] = $this->_config[$key];
             }
         }
@@ -132,7 +133,7 @@ class RedisHandler extends BaseHandler
     /**
      * Se connecte au serveur Redis en utilisant une nouvelle connexion.
      *
-     * @throws \RedisException
+     * @throws RedisException
      */
     protected function _connectTransient(string $server, array $ssl): bool
     {
@@ -158,7 +159,7 @@ class RedisHandler extends BaseHandler
     /**
      * Se connecte au serveur Redis en utilisant une connexion persistente.
      *
-     * @throws \RedisException
+     * @throws RedisException
      */
     protected function _connectPersistent(string $server, array $ssl): bool
     {
@@ -272,7 +273,7 @@ class RedisHandler extends BaseHandler
      */
     public function clear(): bool
     {
-		 if ($this->getConfig('clearUsesFlushDb')) {
+        if ($this->getConfig('clearUsesFlushDb')) {
             $this->_Redis->flushDB(false);
 
             return true;
@@ -314,18 +315,18 @@ class RedisHandler extends BaseHandler
         $this->_Redis->setOption(Redis::OPT_SCAN, (string) Redis::SCAN_RETRY);
 
         $isAllDeleted = true;
-        $iterator = null;
-        $pattern = $this->_config['prefix'] . '*';
+        $iterator     = null;
+        $pattern      = $this->_config['prefix'] . '*';
 
         while (true) {
-            $keys = $this->_Redis->scan($iterator, $pattern, (int)$this->_config['scanCount']);
+            $keys = $this->_Redis->scan($iterator, $pattern, (int) $this->_config['scanCount']);
 
             if ($keys === false) {
                 break;
             }
 
             foreach ($keys as $key) {
-                $isDeleted = ((int)$this->_Redis->del($key) > 0);
+                $isDeleted    = ((int) $this->_Redis->del($key) > 0);
                 $isAllDeleted = $isAllDeleted && $isDeleted;
             }
         }

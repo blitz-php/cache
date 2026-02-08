@@ -129,7 +129,7 @@ abstract class BaseHandler implements CacheInterface
     /**
      * Assurez-vous de la validité du type d'argument et des clés de cache.
      *
-     * @param string   $check    Indique s'il faut vérifier les clés ou les valeurs.
+     * @param string $check Indique s'il faut vérifier les clés ou les valeurs.
      *
      * @throws InvalidArgumentException
      */
@@ -240,7 +240,7 @@ abstract class BaseHandler implements CacheInterface
     {
         $this->ensureValidType($values, self::CHECK_KEY);
 
-		$restore = null;
+        $restore = null;
         if ($ttl !== null) {
             $restore = $this->getConfig('duration');
             $this->setConfig('duration', $ttl);
@@ -256,7 +256,7 @@ abstract class BaseHandler implements CacheInterface
 
             return true;
         } finally {
-            if($restore !== null) {
+            if ($restore !== null) {
                 $this->setConfig('duration', $restore);
             }
         }

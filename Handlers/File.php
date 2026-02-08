@@ -11,7 +11,6 @@
 
 namespace BlitzPHP\Cache\Handlers;
 
-use BlitzPHP\Cache\InvalidArgumentException;
 use CallbackFilterIterator;
 use DateInterval;
 use Exception;
@@ -47,14 +46,14 @@ class File extends BaseHandler
      * @var array<string, mixed>
      */
     protected array $_defaultConfig = [
-		'duration'  => 3600,
-		'groups'    => [],
-		'lock'      => true,
-		'mask'      => 0o664,
-		'dirMask'   => 0770,
-		'path'      => null,
-		'prefix'    => 'blitz_',
-		'serialize' => true,
+        'duration'  => 3600,
+        'groups'    => [],
+        'lock'      => true,
+        'mask'      => 0o664,
+        'dirMask'   => 0770,
+        'path'      => null,
+        'prefix'    => 'blitz_',
+        'serialize' => true,
     ];
 
     /**
@@ -438,7 +437,7 @@ class File extends BaseHandler
         );
 
         foreach ($filtered as $object) {
-			/** @var \SplFileInfo $object */
+            /** @var SplFileInfo $object */
             $path = $object->getPathname();
             unset($object);
             // phpcs:ignore

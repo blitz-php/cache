@@ -57,18 +57,18 @@ final class ResponseCache
     {
         $uri = $request->getUri();
 
-		$query = '';
-		if ($this->cacheQueryString !== false) {
-			parse_str($uri->getQuery(), $queryParams);
+        $query = '';
+        if ($this->cacheQueryString !== false) {
+            parse_str($uri->getQuery(), $queryParams);
 
-			if (is_array($this->cacheQueryString)) {
-				// Filtrer seulement les paramètres spécifiés
-				$queryParams = array_intersect_key($queryParams, array_flip($this->cacheQueryString));
-			}
-			// Trier pour garantir l'ordre et éviter les doublons avec paramètres dans un ordre différent
-			ksort($queryParams);
-			$query = http_build_query($queryParams);
-		}
+            if (is_array($this->cacheQueryString)) {
+                // Filtrer seulement les paramètres spécifiés
+                $queryParams = array_intersect_key($queryParams, array_flip($this->cacheQueryString));
+            }
+            // Trier pour garantir l'ordre et éviter les doublons avec paramètres dans un ordre différent
+            ksort($queryParams);
+            $query = http_build_query($queryParams);
+        }
 
         return md5($request->getMethod() . ':' . $uri->withFragment('')->withQuery($query));
     }
@@ -91,11 +91,11 @@ final class ResponseCache
         return $this->cache->set(
             $this->generateCacheKey($request),
             serialize([
-				'headers' => $headers,
-				'output'  => $response->getBody()->getContents(),
-				'status'  => $response->getStatusCode(),
-				'reason'  => $response->getReasonPhrase(),
-			]),
+                'headers' => $headers,
+                'output'  => $response->getBody()->getContents(),
+                'status'  => $response->getStatusCode(),
+                'reason'  => $response->getReasonPhrase(),
+            ]),
             $this->ttl
         );
     }
@@ -106,24 +106,24 @@ final class ResponseCache
     public function get(ServerRequestInterface $request, ResponseInterface $response): ?ResponseInterface
     {
         if ($cachedResponse = $this->cache->get($this->generateCacheKey($request))) {
-            if (!is_string($cachedResponse)) {
-				throw new Exception('Données de cache corrompues');
-			}
+            if (! is_string($cachedResponse)) {
+                throw new Exception('Données de cache corrompues');
+            }
 
-			$cachedResponse = unserialize($cachedResponse, ['allowed_classes' => false]);
+            $cachedResponse = unserialize($cachedResponse, ['allowed_classes' => false]);
 
-			if (!is_array($cachedResponse) || !isset($cachedResponse['output'], $cachedResponse['headers'])) {
-				throw new Exception('Structure de cache invalide');
-			}
+            if (! is_array($cachedResponse) || ! isset($cachedResponse['output'], $cachedResponse['headers'])) {
+                throw new Exception('Structure de cache invalide');
+            }
 
-			// Validation des headers
-			if (!is_array($cachedResponse['headers'])) {
-				throw new Exception('Headers de cache invalides');
-			}
+            // Validation des headers
+            if (! is_array($cachedResponse['headers'])) {
+                throw new Exception('Headers de cache invalides');
+            }
 
             $headers = $cachedResponse['headers'];
             $output  = $cachedResponse['output'];
-			$status  = $cachedResponse['status'] ?? 200;
+            $status  = $cachedResponse['status'] ?? 200;
             $reason  = $cachedResponse['reason'] ?? '';
 
             // Effacer tous les en-têtes par défaut
@@ -137,7 +137,7 @@ final class ResponseCache
             }
 
             return $response->withBody(to_stream($output))
-				->withStatus($status, $reason);
+                ->withStatus($status, $reason);
         }
 
         return null;
