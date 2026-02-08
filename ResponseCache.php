@@ -70,7 +70,7 @@ final class ResponseCache
 			$query = http_build_query($queryParams);
 		}
 
-        return md5($uri->withFragment('')->withQuery($query));
+        return md5($request->getMethod() . ':' . $uri->withFragment('')->withQuery($query));
     }
 
     /**
