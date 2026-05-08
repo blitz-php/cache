@@ -104,7 +104,7 @@ abstract class BaseHandler implements CacheInterface
     /**
      * Modifie les caractères reservés
      */
-    public function setReservedCharacters(string $reservedCharacters)
+    public static function setReservedCharacters(string $reservedCharacters)
     {
         self::$reservedCharacters = $reservedCharacters;
     }
@@ -122,7 +122,7 @@ abstract class BaseHandler implements CacheInterface
 
         $reserved = self::$reservedCharacters;
         if ($reserved && strpbrk($key, $reserved) !== false) {
-            throw new InvalidArgumentException('La clé de cache contient des caractères réservés ' . $reserved);
+            throw new InvalidArgumentException('La clé de cache (' . $key . ') contient des caractères réservés ' . $reserved);
         }
     }
 

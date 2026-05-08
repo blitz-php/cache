@@ -97,6 +97,10 @@ class Cache implements CacheInterface
         $this->config  = $config;
         $this->adapter = null;
 
+		if (isset($config['reserved_characters'])) {
+			BaseHandler::setReservedCharacters($config['reserved_characters']);
+		}
+
         return $this;
     }
 
