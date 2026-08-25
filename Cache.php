@@ -559,4 +559,28 @@ class Cache implements CacheInterface
             $this->deleteMany($keys);
         });
     }
+
+	/**
+     * Stocke un element dans le cache indefiniment.
+     */
+    public function forever(string $key, mixed $value): bool
+    {
+        return $this->set($key, $value, 0);
+    }
+
+	/**
+     * Modifier la durée d'expiration d'un élément mis en cache.
+     */
+    public function touch(string $key, int $seconds): bool
+    {
+        $value = $this->get($key);
+
+        if (is_null($value)) {
+            return false;
+        }
+
+        $this->set($key, $value, $seconds);
+
+        return true;
+    }
 }
