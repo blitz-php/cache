@@ -11,91 +11,64 @@
 
 namespace BlitzPHP\Cache;
 
-use BlitzPHP\Cache\Handlers\BaseHandler;
-use BlitzPHP\Cache\Handlers\Dummy;
+use ArrayAccess;
 use BlitzPHP\Contracts\Cache\CacheInterface;
+use BlitzPHP\Contracts\Cache\RepositoryInterface;
+use BlitzPHP\Contracts\Event\EventInterface;
+use BlitzPHP\Contracts\Event\EventManagerInterface;
+use BlitzPHP\Traits\Macroable;
+use BlitzPHP\Traits\Support\InteractsWithTime;
+use BlitzPHP\Utilities\Date;
 use BlitzPHP\Utilities\Helpers;
+use BlitzPHP\Utilities\Iterable\Collection;
 use Closure;
 use DateInterval;
-use RuntimeException;
-
+use DateTimeInterface;
+use UnitEnum;
 /**
- * Cache fournit une interface cohérente à la mise en cache dans votre application. Il vous permet
- * d'utiliser plusieurs moteurs de Cache différents, sans coupler votre application à un moteur spécifique
- * la mise en oeuvre. Il vous permet également de modifier le stockage ou la configuration du cache sans affecter
- * le reste de votre candidature.
+ * Dépôt de cache principal de l'application BlitzPHP.
  *
- * Cela configurerait un moteur de cache APCu sur l'alias "shared". Vous pourrez alors lire et écrire
- * à cet alias de cache en l'utilisant pour le paramètre `$config` dans les différentes méthodes Cache.
+ * Cette classe implémente le pattern Repository pour le système de cache,
+ * offrant une couche d'abstraction au-dessus des différents pilotes de cache
+ * (fichiers, Redis, Memcached, etc.) via le gestionnaire {@see Manager}.
  *
- * En général, toutes les opérations de cache sont prises en charge par tous les moteurs de cache.
- * Cependant, Cache::increment() et Cache::decrement() ne sont pas pris en charge par la mise en cache des fichiers.
- *
- * Il existe 7 moteurs de mise en cache intégrés :
- *
- * - `Apcu` - Utilise le cache d'objets APCu, l'un des moteurs de mise en cache les plus rapides.
- * - `Array` - Utilise uniquement la mémoire pour stocker toutes les données, pas réellement un moteur persistant.
- * 			Peut être utile dans un environnement de test ou CLI.
- * - `File` - Utilise des fichiers simples pour stocker le contenu. Mauvaises performances, mais bonnes pour
- * 			stocker de gros objets ou des choses qui ne sont pas sensibles aux E/S. Bien adapté au développement
- * 			car il s'agit d'un cache facile à inspecter et à vider manuellement.
- * - `Memcache` - Utilise l'extension PECL::Memcache et Memcached pour le stockage.
- * 			Lectures/écritures rapides et avantages de la distribution de Memcache.
- * - `Redis` - Utilise l'extension redis et php-redis pour stocker les données de cache.
- * - `Wincache` - Utilise l'extension de cache Windows pour PHP. Prend en charge Wincache 1.1.0 et supérieur.
- * 			Ce moteur est recommandé aux personnes déployant sur Windows avec IIS.
- * - `Xcache` - Utilise l'extension Xcache, une alternative à APCu.
- *
- * Voir la documentation du moteur de cache pour les clés de configuration attendues.
+ * @credit <a href="http://www.laravel.com">Laravel - Illuminate\Cache\Repository</a>
  */
-class Cache implements CacheInterface
+class Cache implements ArrayAccess, RepositoryInterface
 {
-    /**
-     * Un tableau mappant les schémas d'URL aux noms de classe de moteur de mise en cache complets.
-     *
-     * @var array<string, string>
-     * @psalm-var array<string, class-string>
-     */
-    protected static array $validHandlers = [
-        'apcu'      => Handlers\Apcu::class,
-        'array'     => Handlers\ArrayHandler::class,
-        'dummy'     => Dummy::class,
-        'file'      => Handlers\File::class,
-        'memcached' => Handlers\Memcached::class,
-        'redis'     => Handlers\RedisHandler::class,
-        'wincache'  => Handlers\Wincache::class,
-    ];
-
-    /**
-     * Drapeau pour verifier si la mise en cache est activr ou pas.
-     */
-    protected static bool $_enabled = true;
-
-    /**
-     * Configuration des caches
-     */
-    protected array $config = [];
-
-    /**
-     * Adapter a utiliser pour la mise en cache
-     */
-    private ?CacheInterface $adapter;
-
-    /**
-     * Constructeur
-     */
-    public function __construct(array $config = [])
-    {
-        $this->setConfig($config);
+    use InteractsWithTime, Macroable {
+        __call as macroCall;
     }
 
     /**
+     * L'implémentation de l'interface de cache.
+     */
+	protected Manager $manager;
+
+    /**
+     * Le nombre de secondes par défaut pour stocker les éléments.
+     */
+    protected ?int $default = 3600;
+
+    /**
+     * L'implémentation du gestionnaire d'événements.
+     */
+    protected ?EventManagerInterface $events = null;
+
+    /**
+     * Crée une nouvelle instance du dépôt de cache.
+     */
+    public function __construct(protected array $config = [])
+    {
+		$this->manager = new Manager($config);
+    }
+
+	/**
      * Modifie les configuration du cache pour la fabrique actuelle
      */
     public function setConfig(array $config): self
     {
-        $this->config  = $config;
-        $this->adapter = null;
+		$this->manager->setConfig($config);
 
 		if (isset($config['reserved_characters'])) {
 			BaseHandler::setReservedCharacters($config['reserved_characters']);
@@ -104,175 +77,298 @@ class Cache implements CacheInterface
         return $this;
     }
 
-    /**
-     * Tente de créer le gestionnaire de cache souhaité
+	/**
+     * Réactive la mise en cache.
      *
-     * @return BaseHandler
+     * Si la mise en cache a été désactivée avec Cache::disable(), cette méthode inversera cet effet.
      */
-    protected function factory(): CacheInterface
+    public static function enable(): void
     {
-        if (! static::$_enabled) {
-            return new Dummy();
-        }
-        if (! empty($this->adapter)) {
-            return $this->adapter;
-        }
-
-        $validHandlers = $this->config['valid_handlers'] ?? self::$validHandlers;
-
-        if (empty($validHandlers) || ! is_array($validHandlers)) {
-            throw new InvalidArgumentException('La configuration du cache doit avoir un tableau de $valid_handlers.');
-        }
-
-        $handler  = $this->config['handler'] ?? null;
-        $fallback = $this->config['fallback_handler'] ?? null;
-
-        if (empty($handler)) {
-            throw new InvalidArgumentException('La configuration du cache doit avoir un ensemble de gestionnaires.');
-        }
-
-        if (! array_key_exists($handler, $validHandlers)) {
-            throw new InvalidArgumentException('La configuration du cache a un gestionnaire non valide spécifié.');
-        }
-
-        $adapter = new $validHandlers[$handler]();
-        if (! ($adapter instanceof BaseHandler)) {
-            if (empty($fallback)) {
-                $adapter = new Dummy();
-            } elseif (! array_key_exists($fallback, $validHandlers)) {
-                throw new InvalidArgumentException('La configuration du cache a un gestionnaire de secours non valide spécifié.');
-            } else {
-                $adapter = new $validHandlers[$fallback]();
-            }
-        }
-
-        if (! ($adapter instanceof BaseHandler)) {
-            throw new InvalidArgumentException('Le gestionnaire de cache doit utiliser BlitzPHP\Cache\Handlers\BaseHandler comme classe de base.');
-        }
-
-        if (isset($this->config[$handler]) && is_array($this->config[$handler])) {
-            $this->config = array_merge($this->config, $this->config[$handler]);
-            unset($this->config[$handler]);
-        }
-
-        if (! $adapter->init($this->config)) {
-            throw new RuntimeException(
-                sprintf(
-                    'Le moteur de cache %s n\'est pas correctement configuré. Consultez le journal des erreurs pour plus d\'informations.',
-                    get_class($adapter)
-                )
-            );
-        }
-
-        return $this->adapter = $adapter;
+		Manager::enable();
     }
 
     /**
-     * Persiste les données dans le cache, référencées de manière unique par une clé avec un temps d'expiration TTL optionnel.
+     * Désactive la mise en cache.
      *
-     * ### Utilisation :
-     *
-     * Écriture dans la configuration de cache active :
-     *
-     * ```
-     * $cache->write('cached_data', $data);
-     * ```
-     *
-     * @param mixed                 $value Données à mettre en cache - tout sauf une ressource
-     * @param DateInterval|int|null $ttl   Facultatif. La valeur TTL de cet élément. Si aucune valeur n'est envoyée et
-     *                                     le pilote prend en charge TTL, la bibliothèque peut définir une valeur par défaut
-     *                                     pour cela ou laissez le conducteur s'en occuper.
-     *
-     * @return bool Vrai si les données ont été mises en cache avec succès, faux en cas d'échec
+     * Lorsqu'elle est désactivée, toutes les opérations de cache renverront null.
      */
-    public function write(string $key, mixed $value, DateInterval|int|null $ttl = null): bool
+    public static function disable(): void
     {
-        if (is_resource($value)) {
-            return false;
-        }
-
-        $backend = $this->factory();
-        $success = $backend->set($key, $value, $ttl);
-        if ($success === false && $value !== '') {
-            trigger_error(
-                sprintf(
-                    "Unable to write '%s' to %s cache",
-                    $key,
-                    get_class($backend)
-                ),
-                E_USER_WARNING
-            );
-        }
-
-        return $success;
+		Manager::disable();
     }
 
     /**
-     * {@inheritDoc}
+     * Vérifie si la mise en cache est activée.
      */
-    public function set(string $key, mixed $value, DateInterval|int|null $ttl = null): bool
+    public static function enabled(): bool
     {
-        return $this->write($key, $value, $ttl);
+        return Manager::enabled();
     }
 
     /**
-     * Écrire des données pour de nombreuses clés dans le cache.
+     * Détermine si un élément existe dans le cache.
+     */
+    public function has(UnitEnum|array|string $key): bool
+    {
+        return null !== $this->get($key);
+    }
+
+    /**
+     * Détermine si un élément n'existe pas dans le cache.
+     */
+    public function missing(UnitEnum|string $key): bool
+    {
+        return ! $this->has($key);
+    }
+
+    /**
+     * Récupère un élément du cache par sa clé.
+     */
+    public function get(UnitEnum|array|string $key, mixed $default = null): mixed
+    {
+        if (is_array($key)) {
+            return $this->many($key);
+        }
+
+		$key = $this->enumValue($key);
+
+        $value = $this->manager->get($this->itemKey($key));
+
+        // Si nous ne trouvons pas la valeur du cache, nous déclenchons l'événement "missed" et récupérons
+        // la valeur par défaut pour cette valeur de cache. Cette valeur par défaut peut être un callback
+        // donc nous exécutons la fonction de valeur qui la résoudra si nécessaire.
+        if (is_null($value)) {
+            $value = Helpers::value($default);
+        }
+
+        return $value;
+    }
+
+    /**
+     * Récupère plusieurs éléments du cache par leurs clés.
      *
-     * ### Utilisation :
+     * Les éléments non trouvés dans le cache auront une valeur nulle.
+     */
+    public function many(array $keys)
+    {
+        $values = $this->manager->getMultiple((new Collection($keys))
+			->map(fn ($value, $key) => is_string($key) ? $key : $this->enumValue($value))
+			->values()
+			->all()
+		);
+
+        return (new Collection($values))
+            ->map(fn ($value, $key) => $this->handleManyResult($keys, $key, $value))
+            ->all();
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+	public function getMultiple(iterable $keys, mixed $default = null): iterable
+    {
+        $defaults = [];
+
+        foreach ($keys as $key) {
+            $defaults[$this->enumValue($key)] = $default;
+        }
+
+        return $this->many($defaults);
+    }
+
+    /**
+     * Traite un résultat pour la méthode "many".
+     */
+    protected function handleManyResult(array $keys, string $key, mixed $value): mixed
+    {
+        // Si nous ne trouvons pas la valeur du cache, nous déclenchons l'événement "missed" et récupérons
+        // la valeur par défaut pour cette valeur de cache. Cette valeur par défaut peut être un callback
+        // donc nous exécutons la fonction de valeur qui la résoudra si nécessaire.
+        if (is_null($value)) {
+            return (isset($keys[$key]) && ! array_is_list($keys)) ? Helpers::value($keys[$key]) : null;
+        }
+
+        return $value;
+    }
+
+    /**
+     * Récupère un élément du cache et le supprime.
+     */
+    public function pull(UnitEnum|array|string $key, mixed $default = null): mixed
+    {
+		return Helpers::tap($this->get($key, $default), function () use ($key) {
+            $this->forget($key);
+        });
+    }
+
+    /**
+     * Récupère un élément de type chaîne de caractères depuis le cache.
      *
-     * Écriture dans la configuration de cache active :
-     *
-     * ```
-     * $cache->writeMany(['cached_data_1' => 'data 1', 'cached_data_2' => 'data 2']);
-     * ```
-     *
-     * @param iterable              $data Un tableau ou Traversable de données à stocker dans le cache
-     * @param DateInterval|int|null $ttl  Facultatif. La valeur TTL de cet élément. Si aucune valeur n'est envoyée et
-     *                                    le pilote prend en charge TTL, la bibliothèque peut définir une valeur par défaut
-     *                                    pour cela ou laissez le conducteur s'en occuper.
-     *
-     * @return bool Vrai en cas de succès, faux en cas d'échec
+     * @param  (\Closure():(string|null))|string|null  $default
      *
      * @throws InvalidArgumentException
      */
-    public function writeMany(iterable $data, DateInterval|int|null $ttl = null): bool
+    public function string(UnitEnum|string $key, mixed $default = null): string
     {
-        return $this->factory()->setMultiple($data, $ttl);
-    }
+        $value = $this->get($key, $default);
 
-    /**
-     * {@inheritDoc}
-     */
-    public function setMultiple(iterable $values, DateInterval|int|null $ttl = null): bool
-    {
-        return $this->writeMany($values, $ttl);
-    }
-
-    /**
-     * Récupère une valeur dans le cache.
-     *
-     * ### Utilisation :
-     *
-     * Lecture à partir de la configuration du cache actif.
-     *
-     * ```
-     * $cache->read('my_data');
-     * ```
-     */
-    public function read(string $key, mixed $default = null): mixed
-    {
-        if (is_callable($default)) {
-            $_default = $default;
-            $default  = null;
+        if (! is_string($value)) {
+            throw new InvalidArgumentException(
+                sprintf('La valeur du cache pour la clé [%s] doit être une chaîne de caractères, %s fourni.', $key, gettype($value))
+            );
         }
 
-        $result = $this->factory()->get($key, $default);
+        return $value;
+    }
 
-        if (empty($result) && isset($_default)) {
-            if (function_exists('service')) {
-                $result = service('container')->call($_default);
-            } else {
-                $result = $_default();
+    /**
+     * Récupère un élément de type entier depuis le cache.
+     *
+     * @param  (\Closure():(int|null))|int|null  $default
+     *
+     * @throws InvalidArgumentException
+     */
+    public function integer(UnitEnum|string $key, mixed $default = null): int
+    {
+        $value = $this->get($key, $default);
+
+        if (is_int($value)) {
+            return $value;
+        }
+
+        if (filter_var($value, FILTER_VALIDATE_INT) !== false) {
+            return (int) $value;
+        }
+
+        throw new InvalidArgumentException(
+            sprintf('La valeur du cache pour la clé [%s] doit être un entier, %s fourni.', $key, gettype($value))
+        );
+    }
+
+    /**
+     * Récupère un élément de type nombre flottant depuis le cache.
+     *
+     * @param  (\Closure():(float|null))|float|null  $default
+     *
+     * @throws InvalidArgumentException
+     */
+    public function float(UnitEnum|string $key, mixed $default = null): float
+    {
+        $value = $this->get($key, $default);
+
+        if (is_float($value)) {
+            return $value;
+        }
+
+        if (filter_var($value, FILTER_VALIDATE_FLOAT) !== false) {
+            return (float) $value;
+        }
+
+        throw new InvalidArgumentException(
+            sprintf('La valeur du cache pour la clé [%s] doit être un nombre flottant, %s fourni.', $key, gettype($value))
+        );
+    }
+
+    /**
+     * Récupère un élément de type booléen depuis le cache.
+     *
+     * @throws InvalidArgumentException
+     */
+    public function boolean(UnitEnum|string $key, mixed $default = null): bool
+    {
+        $value = $this->get($key, $default);
+
+        if (! is_bool($value)) {
+            throw new InvalidArgumentException(
+                sprintf('La valeur du cache pour la clé [%s] doit être un booléen, %s fourni.', $key, gettype($value))
+            );
+        }
+
+        return $value;
+    }
+
+    /**
+     * Récupère un élément de type tableau depuis le cache.
+     *
+     * @param  (\Closure():(array<array-key, mixed>|null))|array<array-key, mixed>|null  $default
+	 *
+     * @return array<array-key, mixed>
+     *
+     * @throws InvalidArgumentException
+     */
+    public function array(UnitEnum|string $key, $default = null): array
+    {
+        $value = $this->get($key, $default);
+
+        if (! is_array($value)) {
+            throw new InvalidArgumentException(
+                sprintf('La valeur du cache pour la clé [%s] doit être un tableau, %s fourni.', $key, gettype($value))
+            );
+        }
+
+        return $value;
+    }
+
+    /**
+     * Stocke un élément dans le cache.
+     */
+    public function put(UnitEnum|string $key, mixed $value, DateTimeInterface|DateInterval|int|null $ttl = null): bool
+    {
+        if (is_array($key)) {
+            return $this->putMany($key, $value);
+        }
+
+        $key = $this->enumValue($key);
+
+        if ($ttl === null) {
+            return $this->forever($key, $value);
+        }
+
+        $seconds = $this->getSeconds($ttl);
+
+        if ($seconds <= 0) {
+            return $this->forget($key);
+        }
+
+        return $this->manager->write($this->itemKey($key), $value, $seconds);
+    }
+
+    /**
+     * Stocke un élément dans le cache.
+     */
+    public function set(UnitEnum|array|string $key, mixed $value, DateTimeInterface|DateInterval|int|null $ttl = null): bool
+    {
+        return $this->put($key, $value, $ttl);
+    }
+
+    /**
+     * Stocke plusieurs éléments dans le cache pour un nombre de secondes donné.
+     */
+    public function putMany(array $values, DateTimeInterface|DateInterval|int|null $ttl = null): bool
+    {
+        if ($ttl === null) {
+            return $this->putManyForever($values);
+        }
+
+        $seconds = $this->getSeconds($ttl);
+
+        if ($seconds <= 0) {
+            return $this->deleteMultiple(array_keys($values));
+        }
+
+        return $this->manager->writeMany($values, $seconds);
+    }
+
+    /**
+     * Stocke plusieurs éléments dans le cache indéfiniment.
+     */
+    protected function putManyForever(array $values): bool
+    {
+        $result = true;
+
+        foreach ($values as $key => $value) {
+            if (! $this->forever($key, $value)) {
+                $result = false;
             }
         }
 
@@ -280,38 +376,177 @@ class Cache implements CacheInterface
     }
 
     /**
-     * {@inheritDoc}
+     * {@inheritdoc}
      */
-    public function get(string $key, mixed $default = null): mixed
+    public function setMultiple(iterable $values, DateTimeInterface|DateInterval|int|null $ttl = null): bool
     {
-        return $this->read($key, $default);
+        return $this->putMany(is_array($values) ? $values : iterator_to_array($values), $ttl);
     }
 
     /**
-     * Permet d'obtenir plusieurs éléments de cache à partir de leurs clés uniques.
-     *
-     * ### Utilisation :
-     *
-     * Lecture de plusieurs clés à partir de la configuration de cache active.
-     *
-     * ```
-     * $cache->readMany(['my_data_1', 'my_data_2']);
-     * ```
+     * Stocke un élément dans le cache si la clé n'existe pas.
      */
-    public function readMany(iterable $keys, mixed $default = null): iterable
+    public function add(UnitEnum|array|string $key, mixed $value, DateTimeInterface|DateInterval|int|null $ttl = null): bool
     {
-        if (is_callable($default)) {
-            $_default = $default;
-            $default  = null;
+        $key = $this->enumValue($key);
+
+        $seconds = null;
+
+        if ($ttl !== null) {
+            $seconds = $this->getSeconds($ttl);
+
+            if ($seconds <= 0) {
+                return false;
+            }
+
+            // Si le magasin dispose d'une méthode "add", nous l'appellerons sur le magasin afin qu'il
+            // ait la possibilité de remplacer cette logique. Certains pilotes supportent mieux
+            // cette opération avec une implémentation totalement "atomique".
+            if (method_exists($this->manager, 'add')) {
+                return $this->manager->add(
+                    $this->itemKey($key), $value, $seconds
+                );
+            }
         }
 
-        $result = $this->factory()->getMultiple($keys, $default);
+        // Si la valeur n'existait pas dans le cache, nous la stockons dans le cache
+        // afin qu'elle existe pour les requêtes ultérieures. Ensuite, nous retournons true
+        // pour savoir facilement si la valeur a été ajoutée. Sinon, nous retournons false.
+        if (is_null($this->get($key))) {
+            return $this->put($key, $value, $seconds);
+        }
 
-        if (empty($result) && isset($_default)) {
-            if (function_exists('service')) {
-                $result = service('container')->call($_default);
-            } else {
-                $result = $_default();
+        return false;
+    }
+
+    /**
+     * Incrémente la valeur d'un élément dans le cache.
+     */
+    public function increment(UnitEnum|string $key, mixed $value = 1): int|bool
+    {
+        return $this->manager->increment($this->enumValue($key), $value);
+    }
+
+    /**
+     * Décrémente la valeur d'un élément dans le cache.
+     */
+    public function decrement(UnitEnum|string $key, mixed $value = 1): int|bool
+    {
+        return $this->manager->decrement($this->enumValue($key), $value);
+    }
+
+    /**
+     * Stocke un élément dans le cache indéfiniment.
+     */
+    public function forever(UnitEnum|string $key, mixed $value): bool
+    {
+        $key = $this->enumValue($key);
+
+        return $this->manager->forever($this->itemKey($key), $value);
+    }
+
+    /**
+     * Récupère un élément du cache, ou exécute la Closure donnée et stocke le résultat.
+     *
+     * @template TCacheValue
+     *
+     * @param  \Closure(): TCacheValue  $callback
+	 *
+     * @return TCacheValue
+     */
+    public function remember(UnitEnum|string $key, callable|DateTimeInterface|DateInterval|int|null $ttl, ?callable $callback = null): mixed
+    {
+        $value = $this->get($key);
+
+        // Si l'élément existe dans le cache, nous le retournons immédiatement.
+        // Sinon, nous exécutons la Closure donnée et mettons en cache le résultat
+        // pour un nombre de secondes donné afin qu'il soit disponible pour les requêtes ultérieures.
+        if (! is_null($value)) {
+            return $value;
+        }
+
+        $value = $callback();
+
+        $this->put($key, $value, Helpers::value($ttl, $value));
+
+        return $value;
+    }
+
+    /**
+     * Récupère un élément du cache, ou exécute la Closure donnée et stocke le résultat indéfiniment.
+     *
+     * @template TCacheValue
+     *
+     * @param  \Closure(): TCacheValue  $callback
+     *
+	 * @return TCacheValue
+     */
+    public function sear(UnitEnum|string $key, Closure $callback): mixed
+    {
+        return $this->rememberForever($key, $callback);
+    }
+
+    /**
+     * Récupère un élément du cache, ou exécute la Closure donnée et stocke le résultat indéfiniment.
+     *
+     * @template TCacheValue
+     *
+     * @param  \Closure(): TCacheValue  $callback
+     *
+	 * @return TCacheValue
+     */
+    public function rememberForever(UnitEnum|string $key, Closure $callback): mixed
+    {
+        $value = $this->get($key);
+
+        // Si l'élément existe dans le cache, nous le retournons immédiatement.
+        // Sinon, nous exécutons la Closure donnée et mettons en cache le résultat
+        // indéfiniment afin qu'il soit disponible pour les requêtes ultérieures.
+        if (! is_null($value)) {
+            return $value;
+        }
+
+        $this->forever($key, $value = $callback());
+
+        return $value;
+    }
+
+    /**
+     * Définit la date d'expiration d'un élément mis en cache.
+     */
+    public function touch(UnitEnum|string $key, DateTimeInterface|DateInterval|int $ttl): bool
+    {
+		return $this->manager->touch($this->itemKey($key), $this->getSeconds($ttl));
+    }
+
+    /**
+     * Supprime un élément du cache.
+     */
+    public function forget(UnitEnum|array|string $key): bool
+    {
+        return $this->delete($key);
+    }
+
+    /**
+     * Supprime un élément du cache.
+     */
+    public function delete(UnitEnum|array|string $key): bool
+    {
+        $key = $this->enumValue($key);
+
+        return $this->manager->delete($this->itemKey($key));
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function deleteMultiple($keys): bool
+    {
+        $result = true;
+
+        foreach ($keys as $key) {
+            if (! $this->forget($key)) {
+                $result = false;
             }
         }
 
@@ -319,118 +554,23 @@ class Cache implements CacheInterface
     }
 
     /**
-     * {@inheritDoc}
-     */
-    public function getMultiple(iterable $keys, mixed $default = null): iterable
-    {
-        return $this->readMany($keys, $default);
-    }
-
-    /**
-     * Incrémente un nombre sous la clé et renvoie la valeur incrémentée.
-     *
-     * @param int $offset Combien ajouter
-     *
-     * @return false|int Nouvelle valeur, ou false si la donnée n'existe pas, n'est pas un entier,
-     *                   ou si une erreur s'est produite lors de sa récupération.
-     *
-     * @throws InvalidArgumentException Lorsque décalage < 0
-     */
-    public function increment(string $key, int $offset = 1)
-    {
-        if ($offset < 0) {
-            throw new InvalidArgumentException('Le décalage ne peut pas être inférieur à 0.');
-        }
-
-        return $this->factory()->increment($key, $offset);
-    }
-
-    /**
-     * Décrémenter un nombre sous la clé et renvoyer la valeur décrémentée.
-     *
-     * @param int $offset Combien soustraire
-     *
-     * @return false|int Nouvelle valeur, ou false si la donnée n'existe pas, n'est pas un entier,
-     *                   ou s'il y a eu une erreur lors de sa récupération
-     *
-     * @throws InvalidArgumentException lorsque décalage < 0
-     */
-    public function decrement(string $key, int $offset = 1)
-    {
-        if ($offset < 0) {
-            throw new InvalidArgumentException('Le décalage ne peut pas être inférieur à 0.');
-        }
-
-        return $this->factory()->decrement($key, $offset);
-    }
-
-    /**
-     * Supprimer une clé du cache.
-     *
-     * ### Utilisation :
-     *
-     * Suppression de la configuration du cache actif.
-     *
-     * ```
-     * $cache->delete('my_data');
-     * ```
-     */
-    public function delete(string $key): bool
-    {
-        return $this->factory()->delete($key);
-    }
-
-    /**
-     * Supprime plusieurs éléments du cache en une seule opération.
-     *
-     * ### Utilisation :
-     *
-     * Suppression de plusieurs clés de la configuration du cache actif.
-     *
-     * ```
-     * $cache->deleteMany(['my_data_1', 'my_data_2']);
-     * ```
-     *
-     * @param iterable $keys Array ou Traversable de clés de cache à supprimer
-     *
-     * @throws InvalidArgumentException
-     */
-    public function deleteMany(iterable $keys): bool
-    {
-        return $this->factory()->deleteMultiple($keys);
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    public function deleteMultiple(iterable $keys): bool
-    {
-        return $this->deleteMany($keys);
-    }
-
-    /**
-     * Supprime toutes les clés du cache.
+     * {@inheritdoc}
      */
     public function clear(): bool
     {
-        return $this->factory()->clear();
+        return $this->manager->clear();
     }
 
-    /**
-     * Supprime toutes les clés du cache appartenant au même groupe.
+	/**
+     * {@inheritDoc}
      */
     public function clearGroup(string $group): bool
     {
-        return $this->factory()->clearGroup($group);
+        return $this->manager->clearGroup($group);
     }
 
     /**
-     * Renvoie des informations sur l'ensemble du cache.
-     *
-     * Les informations retournées et la structure des données
-     * varie selon le gestionnaire.
-     *
-     * @return array|false|object|null
+     * {@inheritDoc}
      */
     public function info()
     {
@@ -438,131 +578,173 @@ class Cache implements CacheInterface
     }
 
     /**
-     * Réactivez la mise en cache.
-     *
-     * Si la mise en cache a été désactivée avec Cache::disable() cette méthode inversera cet effet.
+     * Formate la clé pour un élément du cache.
      */
-    public static function enable(): void
+    protected function itemKey(string $key): string
     {
-        static::$_enabled = true;
+        return $key;
     }
 
-    /**
-     * Désactivez la mise en cache.
-     *
-     * Lorsqu'il est désactivé, toutes les opérations de cache renverront null.
-     */
-    public static function disable(): void
-    {
-        static::$_enabled = false;
-    }
+	protected function enumValue(mixed $value): mixed
+	{
+		return $value instanceof UnitEnum ? $value->name : $value;
+	}
 
     /**
-     * Vérifiez si la mise en cache est activée.
+     * Calcule le nombre de secondes pour le TTL donné.
      */
-    public static function enabled(): bool
+    protected function getSeconds(DateTimeInterface|DateInterval|int $ttl): int
     {
-        return static::$_enabled;
-    }
+        $duration = $this->parseDateInterval($ttl);
 
-    /**
-     * Fournit la possibilité de faire facilement la mise en cache de lecture.
-     *
-     * Lorsqu'elle est appelée si la clé $ n'est pas définie dans $config, la fonction $callable
-     * sera invoqué. Les résultats seront ensuite stockés dans la configuration du cache
-     * à la clé.
-     *
-     * Exemples:
-     *
-     * En utilisant une Closure pour fournir des données, supposez que `$this` est un objet Table :
-     *
-     * ```
-     * $resultats = $cache->remember('all_articles', function() {
-     * 		return $this->find('all')->toArray();
-     * });
-     * ```
-     *
-     * @param string                         $key      La clé de cache sur laquelle lire/stocker les données.
-     * @param callable|DateInterval|int|null $ttl      Facultatif. La valeur TTL de cet élément. Si aucune valeur n'est envoyée et
-     *                                                 le pilote prend en charge TTL, la bibliothèque peut définir une valeur par défaut
-     *                                                 pour cela ou laissez le conducteur s'en occuper.
-     * @param callable                       $callable Le callback qui fournit des données dans le cas où
-     *                                                 la clé de cache est vide. Peut être n'importe quel type appelable pris en charge par votre PHP.
-     *
-     * @return mixed Si la clé est trouvée : les données en cache.
-     *               Si la clé n'est pas trouvée, la valeur renvoyée par le callable.
-     */
-    public function remember(string $key, callable|DateInterval|int|null $ttl, ?callable $callable = null): mixed
-    {
-        return $this->factory()->remember($key, $ttl, $callable);
-    }
-
-    /**
-     * Écrivez les données de la clé dans un moteur de cache si elles n'existent pas déjà.
-     *
-     * ### Utilisation :
-     *
-     * Écriture dans la configuration de cache active :
-     *
-     * ```
-     * $cache->add('cached_data', $data);
-     * ```
-     *
-     * @param mixed $value Données à mettre en cache - tout sauf une ressource.
-     */
-    public function add(string $key, mixed $value): bool
-    {
-        if (is_resource($value)) {
-            return false;
+        if ($duration instanceof DateTimeInterface) {
+            $duration = Date::now()->diffInSeconds($duration);
         }
 
-        return $this->factory()->add($key, $value);
+        return (int) ($duration > 0 ? $duration : 0);
     }
 
     /**
-     * Détermine si un élément est présent dans le cache.
-     *
-     * REMARQUE : Il est recommandé que has() ne soit utilisé qu'à des fins de type réchauffement du cache
-     * et à ne pas utiliser dans vos opérations d'applications en direct pour get/set, car cette méthode
-     * est soumis à une condition de concurrence où votre has() renverra vrai et immédiatement après,
-     * un autre script peut le supprimer, rendant l'état de votre application obsolète.
-     *
-     * @throws InvalidArgumentException DOIT être lancé si la chaîne $key n'est pas une valeur légale.
+     * Récupère le nom du magasin de cache.
      */
-    public function has(string $key): bool
+    public function getName(): ?string
     {
-        return $this->factory()->has($key);
+        return $this->config['handler'] ?? $this->config['fallback_handler'] ?? null;
     }
 
     /**
-     * Récupérez un élément du cache et supprimez-le.
-     *
-     * @template TCacheValue
-     *
-     * @param (Closure(): TCacheValue)|TCacheValue $default
-     *
-     * @return (TCacheValue is null ? mixed : TCacheValue)
+     * Détermine si le magasin actuel supporte les tags.
      */
-    public function pull(string $key, $default = null)
+    public function supportsTags(): bool
     {
-        return Helpers::tap($this->read($key, $default), function () use ($key) {
-            $this->delete($key);
-        });
+        return method_exists($this->manager, 'tags');
     }
 
     /**
-     * Récupérez un élément du cache et supprimez-le.
-     *
-     * @template TCacheValue
-     *
-     * @param (Closure(): TCacheValue)|TCacheValue $default
-     *
-     * @return (TCacheValue is null ? mixed : TCacheValue)
+     * Récupère le temps de cache par défaut.
      */
-    public function pullMany(iterable $keys, $default = null)
+    public function getDefaultCacheTime(): ?int
     {
-        return Helpers::tap($this->readMany($keys, $default), function () use ($keys) {
-            $this->deleteMany($keys);
-        });
+        return $this->default;
+    }
+
+    /**
+     * Définit le temps de cache par défaut en secondes.
+     */
+    public function setDefaultCacheTime(?int $seconds): self
+    {
+        $this->default = $seconds;
+
+        return $this;
+    }
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function getStore(): CacheInterface
+	{
+		return $this->getManager();
+	}
+
+    /**
+     * Récupère l'implémentation du gestionnaire de cache.
+     */
+    public function getManager(): CacheInterface
+    {
+        return $this->manager;
+    }
+
+    /**
+     * Définit l'implémentation du gestionnaire de cache.
+     */
+    public function setManager(CacheInterface $manager): static
+    {
+        $this->manager = $manager;
+
+        return $this;
+    }
+
+    /**
+     * Déclenche un événement pour cette instance de cache.
+     */
+    protected function event(string|EventInterface $event): void
+    {
+        $this->events?->emit($event);
+    }
+
+    /**
+     * Récupère le répartiteur d'événements.
+     */
+    public function getEventDispatcher(): ?EventManagerInterface
+    {
+        return $this->events;
+    }
+
+    /**
+     * Définit le répartiteur d'événements.
+     */
+    public function setEventManager(EventManagerInterface $events): void
+    {
+        $this->events = $events;
+    }
+
+    /**
+     * Détermine si une valeur mise en cache existe.
+     *
+     * @param  UnitEnum|string  $offset
+     */
+    public function offsetExists($offset): bool
+    {
+        return $this->has($offset);
+    }
+
+    /**
+     * Récupère un élément du cache par sa clé.
+     *
+     * @param  UnitEnum|string  $offset
+     */
+    public function offsetGet($offset): mixed
+    {
+        return $this->get($offset);
+    }
+
+    /**
+     * Stocke un élément dans le cache pour le temps par défaut.
+     *
+     * @param UnitEnum|string  $offset
+     */
+    public function offsetSet($offset, mixed $value): void
+    {
+        $this->put($offset, $value, $this->default);
+    }
+
+    /**
+     * Supprime un élément du cache.
+     *
+     * @param  UnitEnum|string  $offset
+     */
+    public function offsetUnset($offset): void
+    {
+        $this->forget($offset);
+    }
+
+    /**
+     * Gère les appels dynamiques vers les macros ou transmet les méthodes manquantes au magasin.
+     */
+    public function __call(string $method, array $parameters = []): mixed
+    {
+        if (static::hasMacro($method)) {
+            return $this->macroCall($method, $parameters);
+        }
+
+        return $this->manager->$method(...$parameters);
+    }
+
+    /**
+     * Clone l'instance du dépôt de cache.
+     */
+    public function __clone(): void
+    {
+        $this->manager = clone $this->manager;
     }
 }
