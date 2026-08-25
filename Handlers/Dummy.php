@@ -39,7 +39,7 @@ class Dummy extends BaseHandler
     /**
      * {@inheritDoc}
      */
-    public function set(string $key, mixed $value, null|DateInterval|int $ttl = null): bool
+    public function set(string $key, mixed $value, DateInterval|int|null $ttl = null): bool
     {
         return true;
     }
@@ -47,7 +47,7 @@ class Dummy extends BaseHandler
     /**
      * {@inheritDoc}
      */
-    public function setMultiple(iterable $values, null|DateInterval|int $ttl = null): bool
+    public function setMultiple(iterable $values, DateInterval|int|null $ttl = null): bool
     {
         return true;
     }
@@ -65,7 +65,13 @@ class Dummy extends BaseHandler
      */
     public function getMultiple(iterable $keys, mixed $default = null): iterable
     {
-        return [];
+        $result = [];
+
+        foreach ($keys as $key) {
+            $result[$key] = $default;
+        }
+
+        return $result;
     }
 
     /**

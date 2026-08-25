@@ -78,7 +78,7 @@ class Memcached extends BaseHandler
     protected array $_serializers = [];
 
     /**
-     * @var string[]
+     * @var list<string>
      */
     protected array $_compiledGroupNames = [];
 
@@ -280,7 +280,7 @@ class Memcached extends BaseHandler
      *
      * @see https://www.php.net/manual/en/memcached.set.php
      */
-    public function set(string $key, mixed $value, null|DateInterval|int $ttl = null): bool
+    public function set(string $key, mixed $value, DateInterval|int|null $ttl = null): bool
     {
         $duration = $this->duration($ttl);
 
@@ -290,7 +290,7 @@ class Memcached extends BaseHandler
     /**
      * {@inheritDoc}
      */
-    public function setMultiple(iterable $values, null|DateInterval|int $ttl = null): bool
+    public function setMultiple(iterable $values, DateInterval|int|null $ttl = null): bool
     {
         $cacheData = [];
 
@@ -330,6 +330,10 @@ class Memcached extends BaseHandler
         }
 
         $values = $this->_Memcached->getMulti($cacheKeys);
+        if ($values === false) {
+            return array_fill_keys(array_keys($cacheKeys), $default);
+        }
+
         $return = [];
 
         foreach ($cacheKeys as $original => $prefixed) {
@@ -420,7 +424,7 @@ class Memcached extends BaseHandler
      */
     public function groups(): array
     {
-        if (empty($this->_compiledGroupNames)) {
+        if ($this->_compiledGroupNames === []) {
             foreach ($this->_config['groups'] as $group) {
                 $this->_compiledGroupNames[] = $this->_config['prefix'] . $group;
             }

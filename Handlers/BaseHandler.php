@@ -17,6 +17,7 @@ use BlitzPHP\Traits\InstanceConfigTrait;
 use BlitzPHP\Utilities\Helpers;
 use Closure;
 use DateInterval;
+use DateTime;
 use Exception;
 
 abstract class BaseHandler implements CacheInterface
@@ -84,7 +85,7 @@ abstract class BaseHandler implements CacheInterface
     public function init(array $config = []): bool
     {
         if (isset($config['prefix'])) {
-           $config['prefix'] = str_replace(' ', '-', strtolower($config['prefix'])); 
+            $config['prefix'] = str_replace(' ', '-', strtolower($config['prefix']));
         }
 
         $this->setConfig($config);
@@ -103,7 +104,7 @@ abstract class BaseHandler implements CacheInterface
     /**
      * Modifie les caractères reservés
      */
-    public function setReservedCharacters(string $reservedCharacters)
+    public static function setReservedCharacters(string $reservedCharacters)
     {
         self::$reservedCharacters = $reservedCharacters;
     }
@@ -121,27 +122,19 @@ abstract class BaseHandler implements CacheInterface
 
         $reserved = self::$reservedCharacters;
         if ($reserved && strpbrk($key, $reserved) !== false) {
-            throw new InvalidArgumentException('La clé de cache contient des caractères réservés ' . $reserved);
+            throw new InvalidArgumentException('La clé de cache (' . $key . ') contient des caractères réservés ' . $reserved);
         }
     }
 
     /**
      * Assurez-vous de la validité du type d'argument et des clés de cache.
      *
-     * @param iterable $iterable L'itérable à vérifier.
-     * @param string   $check    Indique s'il faut vérifier les clés ou les valeurs.
+     * @param string $check Indique s'il faut vérifier les clés ou les valeurs.
      *
      * @throws InvalidArgumentException
      */
-    protected function ensureValidType($iterable, string $check = self::CHECK_VALUE): void
+    protected function ensureValidType(iterable $iterable, string $check = self::CHECK_VALUE): void
     {
-        if (! is_iterable($iterable)) {
-            throw new InvalidArgumentException(sprintf(
-                'Un cache %s doit être soit un tableau soit un Traversable.',
-                $check === self::CHECK_VALUE ? 'key set' : 'set'
-            ));
-        }
-
         foreach ($iterable as $key => $value) {
             if ($check === self::CHECK_VALUE) {
                 $this->ensureValidKey($value);
@@ -168,27 +161,26 @@ abstract class BaseHandler implements CacheInterface
      * });
      * ```
      *
-     * @param string   $key      La clé de cache sur laquelle lire/stocker les données.
-     * @param callable|DateInterval|int|null $ttl   Facultatif. La valeur TTL de cet élément. Si aucune valeur n'est envoyée et
-     *                                     le pilote prend en charge TTL, la bibliothèque peut définir une valeur par défaut
-     *                                     pour cela ou laissez le conducteur s'en occuper.
-     *
-     * @param callable $callable Le callback qui fournit des données dans le cas où
-     *                           la clé de cache est vide. Peut être n'importe quel type appelable pris en charge par votre PHP.
+     * @param string                         $key      La clé de cache sur laquelle lire/stocker les données.
+     * @param callable|DateInterval|int|null $ttl      Facultatif. La valeur TTL de cet élément. Si aucune valeur n'est envoyée et
+     *                                                 le pilote prend en charge TTL, la bibliothèque peut définir une valeur par défaut
+     *                                                 pour cela ou laissez le conducteur s'en occuper.
+     * @param callable                       $callable Le callback qui fournit des données dans le cas où
+     *                                                 la clé de cache est vide. Peut être n'importe quel type appelable pris en charge par votre PHP.
      *
      * @return mixed Si la clé est trouvée : les données en cache.
      *               Si la clé n'est pas trouvée, la valeur renvoyée par le callable.
      */
-    public function remember(string $key, callable|DateInterval|int|null $ttl, callable $callable = null): mixed
+    public function remember(string $key, callable|DateInterval|int|null $ttl, ?callable $callable = null): mixed
     {
         if (is_callable($ttl)) {
             $callable = $ttl;
             $ttl      = null;
         }
 
-		if (null !== $value = $this->get($key)) {
-			return $value;
-		}
+        if (null !== $value = $this->get($key)) {
+            return $value;
+        }
 
         $this->set($key, $value = $callable(), $ttl);
 
@@ -244,10 +236,11 @@ abstract class BaseHandler implements CacheInterface
      * @throws InvalidArgumentException Si $values n'est ni un tableau ni un Traversable,
      *                                  ou si l'une des valeurs $ n'est pas une valeur légale.
      */
-    public function setMultiple(iterable $values, null|DateInterval|int $ttl = null): bool
+    public function setMultiple(iterable $values, DateInterval|int|null $ttl = null): bool
     {
         $this->ensureValidType($values, self::CHECK_KEY);
 
+        $restore = null;
         if ($ttl !== null) {
             $restore = $this->getConfig('duration');
             $this->setConfig('duration', $ttl);
@@ -263,7 +256,7 @@ abstract class BaseHandler implements CacheInterface
 
             return true;
         } finally {
-            if (isset($restore)) {
+            if ($restore !== null) {
                 $this->setConfig('duration', $restore);
             }
         }
@@ -329,7 +322,7 @@ abstract class BaseHandler implements CacheInterface
      *
      * @return bool Vrai en cas de succès et faux en cas d'échec.
      */
-    abstract public function set(string $key, mixed $value, null|DateInterval|int $ttl = null): bool;
+    abstract public function set(string $key, mixed $value, DateInterval|int|null $ttl = null): bool;
 
     /**
      * {@inheritDoc}
@@ -382,7 +375,7 @@ abstract class BaseHandler implements CacheInterface
      * et renvoie la "valeur du groupe" pour chacun d'eux, c'est
      * le jeton représentant chaque groupe dans la clé de cache
      *
-     * @return string[]
+     * @return list<string>
      */
     public function groups(): array
     {
@@ -407,7 +400,7 @@ abstract class BaseHandler implements CacheInterface
 
         $prefix = '';
         if ($this->_groupPrefix) {
-            $prefix = md5(implode('_', $this->groups()));
+            $prefix = hash('xxh128', implode('_', $this->groups()));
         }
         $key = preg_replace('/[\s]+/', '_', $key);
 
@@ -433,16 +426,19 @@ abstract class BaseHandler implements CacheInterface
      * @param DateInterval|int|null $ttl La valeur TTL de cet élément. Si null est envoyé,
      *                                   La durée par défaut du conducteur sera utilisée.
      */
-    protected function duration(null|DateInterval|int $ttl): int
+    protected function duration(DateInterval|int|null $ttl): int
     {
         if ($ttl === null) {
             return $this->_config['duration'];
         }
 
         if (is_int($ttl)) {
-            return $ttl;
+            return max(0, $ttl);
         }
 
-        return (int) $ttl->format('%s');
+        /** @var DateTime $datetime */
+        $datetime = DateTime::createFromFormat('U', '0');
+
+        return (int) $datetime->add($ttl)->format('U');
     }
 }

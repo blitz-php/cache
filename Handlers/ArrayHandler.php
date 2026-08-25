@@ -35,7 +35,7 @@ class ArrayHandler extends BaseHandler
     /**
      * {@inheritDoc}
      */
-    public function set(string $key, mixed $value, null|DateInterval|int $ttl = null): bool
+    public function set(string $key, mixed $value, DateInterval|int|null $ttl = null): bool
     {
         $key              = $this->_key($key);
         $expires          = time() + $this->duration($ttl);
@@ -87,7 +87,10 @@ class ArrayHandler extends BaseHandler
     {
         if ($this->get($key) === null) {
             $this->set($key, 0);
+
+            return 0;
         }
+
         $key = $this->_key($key);
         $this->data[$key]['val'] -= $offset;
 

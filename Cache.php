@@ -70,6 +70,10 @@ class Cache implements ArrayAccess, RepositoryInterface
     {
 		$this->manager->setConfig($config);
 
+		if (isset($config['reserved_characters'])) {
+			BaseHandler::setReservedCharacters($config['reserved_characters']);
+		}
+
         return $this;
     }
 

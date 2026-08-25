@@ -18,7 +18,7 @@ final class FileVarExportHandler extends BaseHandler
     /**
      * Dossier de stockage des fichiers mis en cache.
      */
-	private string $path;
+    private string $path;
 
     /**
      * Constructeur
@@ -31,7 +31,7 @@ final class FileVarExportHandler extends BaseHandler
 
         $this->path = rtrim($path, '/\\');
 
-        if (!is_dir($this->path)) {
+        if (! is_dir($this->path)) {
             mkdir($this->path, 0777, true);
         }
     }
@@ -54,10 +54,10 @@ final class FileVarExportHandler extends BaseHandler
 
     /**
      * {@inheritDoc}
-	 *
-	 * @param array|bool|float|int|object|string|null $value
+     *
+     * @param array|bool|float|int|object|string|null $value
      */
-    public function set(string $key, mixed $value, null|DateInterval|int $ttl = null): bool
+    public function set(string $key, mixed $value, DateInterval|int|null $ttl = null): bool
     {
         $value = var_export($value, true);
 
@@ -71,20 +71,20 @@ final class FileVarExportHandler extends BaseHandler
     /**
      * {@inheritDoc}
      */
-    public function setMultiple(iterable $values, null|DateInterval|int $ttl = null): bool
+    public function setMultiple(iterable $values, DateInterval|int|null $ttl = null): bool
     {
         return true;
     }
 
     /**
      * {@inheritDoc}
-	 *
-	 * @return array|bool|float|int|object|string|null
+     *
+     * @return array|bool|float|int|object|string|null
      */
     public function get(string $key, mixed $default = null): mixed
     {
-		return @include $this->path . "/{$key}";
-	}
+        return @include $this->path . "/{$key}";
+    }
 
     /**
      * {@inheritDoc}
@@ -115,7 +115,7 @@ final class FileVarExportHandler extends BaseHandler
      */
     public function delete(string $key): bool
     {
-		return @unlink($this->path . "/{$key}");
+        return @unlink($this->path . "/{$key}");
     }
 
     /**
@@ -131,21 +131,22 @@ final class FileVarExportHandler extends BaseHandler
      */
     public function clear(): bool
     {
-		if (! is_dir($this->path)) {
-			return false;
-		}
+        if (! is_dir($this->path)) {
+            return false;
+        }
 
-		$files = glob($this->path . '/*');
-		foreach ($files as $file) {
-			if (is_file($file)) {
-				unlink($file);
-			} elseif (is_dir($file)) {
-				$this->clear($file);
-			}
-		}
+        $files = glob($this->path . '/*');
 
-		return rmdir($this->path);
-	}
+        foreach ($files as $file) {
+            if (is_file($file)) {
+                unlink($file);
+            } elseif (is_dir($file)) {
+                $this->clear($file);
+            }
+        }
+
+        return rmdir($this->path);
+    }
 
     /**
      * {@inheritDoc}
